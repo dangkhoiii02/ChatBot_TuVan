@@ -1,0 +1,37 @@
+{
+  "description": "Danh mục từ khóa cờ đỏ (Red Flags) để phân loại độc lập các ca cực kỳ nhạy cảm trước khi gọi AI.",
+  "categories": {
+    "benh_hiem_ngheo": {
+      "name": "Bệnh hiểm nghèo & Cấp cứu y tế",
+      "keywords": [
+        "ung thư", "ung buou", "xạ trị", "hóa trị", "khối u", "chạy thận", 
+        "tai biến", "đột quỵ", "cấp cứu", "phẫu thuật", "nguy kịch", "nằm viện", 
+        "hôn mê", "mổ cấp cứu", "bệnh viện"
+      ],
+      "instruction": "Không níu kéo, không thúc ép tiến độ học hay quy định cứng nhắc. Đồng cảm, thăm hỏi chân tình, tôn trọng quyết định tạm ngưng/hủy khóa, hướng dẫn hoàn tiền nếu cần và chúc bình an."
+    },
+    "tam_ly_khung_hoang": {
+      "name": "Khủng hoảng tâm lý & Sức khỏe tinh thần",
+      "keywords": [
+        "tự tử", "tự sát", "muốn chết", "trầm cảm", "u uất", "suy sụp", 
+        "hoảng loạn", "kiệt quệ tinh thần", "bế tắc", "áp lực quá mức"
+      ],
+      "instruction": "Tuyệt đối không tạo áp lực học tập hay bài vở. Lắng nghe, an ủi, đề nghị học viên nghỉ ngơi, ổn định tinh thần, ưu tiên sức khỏe là trên hết. Bắt buộc chuyển người thật theo dõi."
+    },
+    "tang_su_mat_mat": {
+      "name": "Tang sự & Mất mát người thân",
+      "keywords": [
+        "qua đời", "mất rồi", "đám tang", "tang sự", "mất người thân", 
+        "bố mất", "mẹ mất", "ba mất", "má mất", "vợ mất", "chồng mất", "con mất"
+      ],
+      "instruction": "Gửi lời chia buồn sâu sắc, động viên học viên lo chu toàn việc gia đình. Cho phép bảo lưu vô điều kiện."
+    },
+    "tai_chinh_nghiem_trong": {
+      "name": "Khủng hoảng tài chính trầm trọng",
+      "keywords": [
+        "vỡ nợ", "phá sản", "siết nợ", "bị lừa hết tiền", "kiệt quệ", "mất trắng"
+      ],
+      "instruction": "Cảm thông, không thúc ép đóng phí, xử lý hỗ trợ theo tình người và thẩm quyền."
+    }
+  }
+}

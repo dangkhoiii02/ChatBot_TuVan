@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trợ Lý Thầy Minh Piano - Trợ Lý AI Chat & Quản Lý Phản Hồi</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- TOP HEADER & API SETTINGS -->
+  <header class="app-header">
+    <div class="header-content">
+      <div class="logo-area">
+        <div class="piano-icon">🎹</div>
+        <div>
+          <h1>Bot Trợ Lý "Thầy Minh Piano"</h1>
+          <p class="subtitle">Hệ thống phân loại độ nhạy cảm (Đỏ/Vàng/Xanh) & Sinh 5 phương án phản hồi</p>
+        </div>
+      </div>
+
+      <div class="api-key-panel">
+        <div class="api-input-group">
+          <label for="apiKeyInput">Gemini API Key:</label>
+          <div class="input-with-action">
+            <input type="password" id="apiKeyInput" placeholder="Dán Gemini API Key vào đây..." autocomplete="off">
+            <button type="button" id="toggleApiKeyBtn" title="Hiện/Ẩn API Key" class="btn-icon">👁️</button>
+            <button type="button" id="saveApiKeyBtn" class="btn btn-secondary">Lưu Key</button>
+          </div>
+        </div>
+        <div class="model-select-group">
+          <label for="modelSelect">Model:</label>
+          <select id="modelSelect">
+            <option value="gemini-2.0-flash" selected>gemini-2.0-flash (Nhanh & Tối ưu)</option>
+            <option value="gemini-2.5-flash">gemini-2.5-flash (Thế hệ mới)</option>
+            <option value="gemini-1.5-flash">gemini-1.5-flash (Ổn định)</option>
+          </select>
+          <span id="apiKeyStatusBadge" class="badge badge-gray">Chưa cấu hình</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- NAVIGATION TABS -->
+  <nav class="app-nav">
+    <button class="nav-tab active" data-tab="tab-chat">
+      <span class="tab-icon">💬</span> Trợ Lý Phản Hồi Học Viên
+    </button>
+    <button class="nav-tab" data-tab="tab-docs">
+      <span class="tab-icon">📚</span> Nạp & Quản Lý Tài Liệu (Persona, Policy, Cờ đỏ)
+    </button>
+    <button class="nav-tab" data-tab="tab-history">
+      <span class="tab-icon">📋</span> Nhật Ký Đã Duyệt & Học Tập
+    </button>
+  </nav>
+
+  <!-- MAIN CONTAINER -->
+  <main class="app-main">
+
+    <!-- TAB 1: TRỢ LÝ PHẢN HỒI (MAIN) -->
+    <section id="tab-chat" class="tab-content active">
+      
+      <!-- QUICK SAMPLES BANNER -->
+      <div class="samples-card">
+        <div class="samples-title">
+          <span>⚡ Mẫu tin nhắn thử nghiệm nhanh (Dữ liệu từ ảnh thực tế):</span>
+        </div>
+        <div class="samples-tags" id="samplesContainer">
+          <button class="sample-btn" data-sample-id="sample_6_cancer_refund_strict_kind">🔴 Ca 6: Bệnh nhân ung thư (Cờ Đỏ)</button>
+          <button class="sample-btn" data-sample-id="sample_2_technique_fingering">🟡 Ca 7: Chữa clip vướng phím đen & rotation</button>
+          <button class="sample-btn" data-sample-id="sample_3_retention_expiry">🟡 Ca 3: Hết hạn bảo lưu 90 ngày</button>
+          <button class="sample-btn" data-sample-id="sample_4_consoling_crisis">🟡 Ca 4: Học viên mất đt / tinh thần bất an</button>
+          <button class="sample-btn" data-sample-id="sample_1_motivation">🟢 Ca 1: Động viên tập đàn 15 phút</button>
+          <button class="sample-btn" data-sample-id="sample_5_followup_reminder">🟢 Ca 5: Nhắc nộp bài tập mèo giơ biển</button>
+        </div>
+      </div>
+
+      <div class="workspace-grid">
+        
+        <!-- LEFT: INPUT & CONTEXT -->
+        <div class="left-panel">
+          <div class="card">
+            <div class="card-header">
+              <h2>📥 Tin Nhắn Học Viên Đến</h2>
+              <button type="button" id="clearInputBtn" class="btn-text">Xóa trắng</button>
+            </div>
+
+            <div class="form-group">
+              <label for="studentMessage">Nội dung tin nhắn:</label>
+              <textarea id="studentMessage" rows="5" placeholder="Nhập tin nhắn từ học viên hoặc bấm chọn mẫu nhanh ở trên..."></textarea>
+            </div>
+
+            <!-- COLLAPSIBLE CONTEXT FORM (BẮT BỆNH ĐÀN NHƯ ẢNH 2) -->
+            <div class="context-accordion">
+              <div class="accordion-header" id="accordionToggle">
+                <span class="accordion-title">
+                  <span>🛠️ Bắt bệnh ngón đàn & Ngữ cảnh học viên (Tùy chọn)</span>
+                </span>
+                <span class="accordion-arrow">▼</span>
+              </div>
+              <div class="accordion-body" id="accordionBody">
+                <div class="form-row">
+                  <div class="form-group col-6">
+                    <label for="ctxAudience">Đối tượng:</label>
+                    <input type="text" id="ctxAudience" placeholder="VD: Nữ lớn tuổi, Thanh niên...">
+                  </div>
+                  <div class="form-group col-6">
+                    <label for="ctxPronoun">Xưng hô:</label>
+                    <select id="ctxPronoun">
+                      <option value="thầy - em" selected>thầy - em (mặc định trẻ tuổi)</option>
+                      <option value="thầy - chị">thầy - chị (nữ lớn tuổi)</option>
+                      <option value="thầy - anh">thầy - anh (nam lớn tuổi)</option>
+                      <option value="thầy - mình">thầy - mình (gần gũi thân mật)</option>
+                      <option value="thầy - bạn">thầy - bạn (trung tính lịch sự)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="form-row">
+                  <div class="form-group col-6">
+                    <label for="ctxOldIssue">Bệnh cũ:</label>
+                    <input type="text" id="ctxOldIssue" placeholder="VD: gãy ngón, chĩa ngón, sai ô 15...">
+                  </div>
+                  <div class="form-group col-6">
+                    <label for="ctxOldPrescription">Chỉ định cũ:</label>
+                    <input type="text" id="ctxOldPrescription" placeholder="VD: tập ngón 3-4 lặp lại 10 lần...">
+                  </div>
+                </div>
+
+                <div class="form-row">
+                  <div class="form-group col-6">
+                    <label for="ctxCurrentIssue">Bệnh hiện tại:</label>
+                    <input type="text" id="ctxCurrentIssue" placeholder="VD: vướng phím đen ở 0:03, nhảy nấc cụt 0:37...">
+                  </div>
+                  <div class="form-group col-6">
+                    <label for="ctxCurrentPrescription">Chỉ định hiện tại:</label>
+                    <input type="text" id="ctxCurrentPrescription" placeholder="VD: đổi xếp ngón 4-5, rotation...">
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label for="ctxAppointmentDays">Số ngày hẹn nộp bài tiếp theo:</label>
+                  <input type="text" id="ctxAppointmentDays" placeholder="VD: 3 ngày, hẹn thứ 5 tuần sau...">
+                </div>
+              </div>
+            </div>
+
+            <button type="button" id="analyzeBtn" class="btn btn-primary btn-large">
+              <span class="btn-spinner" id="btnSpinner"></span>
+              <span id="btnText">✨ Phân Tích & Sinh 5 Gợi Ý Trả Lời</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- RIGHT: RESULTS & APPROVAL WORKSPACE -->
+        <div class="right-panel">
+
+          <!-- SENSITIVITY STATUS ALERT -->
+          <div id="sensitivityAlert" class="sensitivity-card hidden">
+            <div class="alert-icon" id="alertIcon">🟢</div>
+            <div class="alert-content">
+              <div class="alert-title-row">
+                <h3 id="alertTitle">Phân loại: CỜ XANH</h3>
+                <span id="alertBadge" class="badge">XANH</span>
+              </div>
+              <p id="alertReason">Lý do phân loại...</p>
+              <div id="redFlagWarning" class="red-warning-box hidden">
+                ⚠️ <strong>LƯU Ý BẮT BUỘC CHO CA NÀY:</strong> Không dùng kỹ thuật níu kéo học viên. Tuyệt đối tôn trọng quyết định, thăm hỏi chân thành và tuân thủ chính sách hoàn tiền trong Policy. Bắt buộc người thật duyệt trước khi gửi!
+              </div>
+            </div>
+          </div>
+
+          <!-- ANALYSIS SUMMARY -->
+          <div id="analysisCard" class="card analysis-card hidden">
+            <div class="card-header">
+              <h3>🔍 Nhận định tâm lý & Tình huống học viên:</h3>
+            </div>
+            <p id="analysisText">...</p>
+          </div>
+
+          <!-- 5 REPLIES CONTAINER -->
+          <div id="repliesSection" class="hidden">
+            <div class="section-header">
+              <h3>💡 5 Phương Án Trả Lời (Chọn 1 phương án để sửa & gửi)</h3>
+              <span class="hint-text">Được sinh theo đúng Persona Thầy Minh Piano</span>
+            </div>
+
+            <div class="replies-list" id="repliesList">
+              <!-- Cards 1-5 will be injected here dynamically -->
+            </div>
+          </div>
+
+          <!-- FINAL MESSAGE EDITOR & SEND SIMULATOR -->
+          <div id="finalEditorCard" class="card editor-card hidden">
+            <div class="card-header">
+              <h3>📤 Duyệt & Gửi Tin Nhắn Phản Hồi</h3>
+              <span class="badge badge-blue" id="selectedToneBadge">Phương án đã chọn</span>
+            </div>
+            <div class="form-group">
+              <label for="finalMessageText">Nội dung gửi cho học viên (có thể chỉnh sửa theo ý thầy):</label>
+              <textarea id="finalMessageText" rows="6"></textarea>
+            </div>
+            <div class="editor-actions">
+              <button type="button" id="copyFinalBtn" class="btn btn-secondary">📋 Sao chép vào Clipboard</button>
+              <button type="button" id="approveSendBtn" class="btn btn-success">✅ Xác Nhận Gửi & Lưu Vào Lịch Sử Học Tập</button>
+            </div>
+            <div id="sendStatusMsg" class="status-msg hidden"></div>
+          </div>
+
+          <!-- PLACEHOLDER WHEN EMPTY -->
+          <div id="emptyPlaceholder" class="card empty-state">
+            <div class="empty-icon">🎹</div>
+            <h3>Sẵn sàng hỗ trợ Thầy Minh Piano!</h3>
+            <p>Nhập tin nhắn học viên hoặc bấm vào các nút <strong>Mẫu tin nhắn thử nghiệm</strong> phía trên để xem cơ chế phân loại cờ và sinh 5 phương án trả lời.</p>
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- TAB 2: NẠP & QUẢN LÝ TÀI LIỆU (KNOWLEDGE BASE) -->
+    <section id="tab-docs" class="tab-content">
+      <div class="card docs-card">
+        <div class="docs-header">
+          <div>
+            <h2>📚 Kho Tài Liệu & Tri Thức Cho AI</h2>
+            <p class="subtitle">Chỉnh sửa trực tiếp Persona, Policy, Red Flags hoặc Mẫu tin nhắn. Dữ liệu sẽ được nạp ngay vào bộ nhớ AI cho các lần phân tích tiếp theo!</p>
+          </div>
+          <div class="docs-actions">
+            <button type="button" id="reloadDocsBtn" class="btn btn-secondary">🔄 Tải lại dữ liệu</button>
+            <button type="button" id="saveCurrentDocBtn" class="btn btn-primary">💾 Lưu & Cập Nhật Vào AI Ngay</button>
+          </div>
+        </div>
+
+        <div class="docs-layout">
+          <!-- FILE SELECTOR SIDEBAR -->
+          <div class="docs-sidebar">
+            <div class="sidebar-title">Danh mục tài liệu:</div>
+            <ul class="file-list" id="docFileList">
+              <li class="file-item active" data-filename="persona.md">
+                <span class="file-icon">👤</span>
+                <div class="file-info">
+                  <span class="file-name">persona.md</span>
+                  <span class="file-desc">Văn phong, xưng hô, bắt bệnh ngón</span>
+                </div>
+              </li>
+              <li class="file-item" data-filename="policy.md">
+                <span class="file-icon">📜</span>
+                <div class="file-info">
+                  <span class="file-name">policy.md</span>
+                  <span class="file-desc">Quy định bảo lưu 90 ngày, học phí, hoàn tiền</span>
+                </div>
+              </li>
+              <li class="file-item" data-filename="red_flags.json">
+                <span class="file-icon">🚩</span>
+                <div class="file-info">
+                  <span class="file-name">red_flags.json</span>
+                  <span class="file-desc">Từ khóa nhạy cảm (ung thư, khủng hoảng...)</span>
+                </div>
+              </li>
+              <li class="file-item" data-filename="few_shots.json">
+                <span class="file-icon">⭐</span>
+                <div class="file-info">
+                  <span class="file-name">few_shots.json</span>
+                  <span class="file-desc">Các ví dụ hội thoại mẫu Xanh/Vàng/Đỏ</span>
+                </div>
+              </li>
+              <li class="file-item" data-filename="raw_messages.txt">
+                <span class="file-icon">📄</span>
+                <div class="file-info">
+                  <span class="file-name">raw_messages.txt</span>
+                  <span class="file-desc">Toàn văn tin nhắn gốc từ ảnh 1-7</span>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <!-- DOCUMENT EDITOR -->
+          <div class="docs-editor-area">
+            <div class="editor-filename-bar">
+              <span id="currentEditingFilename">persona.md</span>
+              <span id="docSaveStatus" class="save-status">Đã đồng bộ</span>
+            </div>
+            <textarea id="docContentTextarea" spellcheck="false" class="code-editor"></textarea>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: NHẬT KÝ ĐÃ DUYỆT (HISTORY) -->
+    <section id="tab-history" class="tab-content">
+      <div class="card history-card">
+        <div class="card-header">
+          <div>
+            <h2>📋 Nhật Ký Tin Nhắn Đã Duyệt & Phản Hồi</h2>
+            <p class="subtitle">Ghi nhận các lựa chọn của Thầy Minh để liên tục cải thiện chất lượng AI</p>
+          </div>
+          <button type="button" id="refreshHistoryBtn" class="btn btn-secondary">🔄 Làm mới</button>
+        </div>
+
+        <div class="history-table-container">
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th>Thời gian</th>
+                <th>Phân loại</th>
+                <th>Tin nhắn học viên</th>
+                <th>Phương án Thầy đã chọn / sửa</th>
+                <th>Góc tiếp cận</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody">
+              <tr>
+                <td colspan="5" class="text-center">Chưa có lịch sử duyệt tin nhắn nào.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- TOAST NOTIFICATION CONTAINER -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
