@@ -1,181 +1,133 @@
-// Client App Logic cho Bot Trợ Lý "Thầy Minh Piano"
+// MINH PIANO STUDIO — SENIOR FRONT-END CLIENT ENGINE
 
 document.addEventListener('DOMContentLoaded', () => {
-  // --- STATE MANAGEMENT ---
-  let documentsCache = {};
-  let currentEditingFile = 'persona.md';
+  // --- STATE ---
   let samplesCache = [];
   let currentReplies = [];
-  let selectedReplyIndex = -1;
+  let selectedReplyIdx = 0;
+  let cachedDocs = {};
+  let currentDocFile = 'persona.md';
 
-  // --- DOM ELEMENTS ---
-  const apiKeyInput = document.getElementById('apiKeyInput');
-  const toggleApiKeyBtn = document.getElementById('toggleApiKeyBtn');
-  const saveApiKeyBtn = document.getElementById('saveApiKeyBtn');
-  const apiKeyStatusBadge = document.getElementById('apiKeyStatusBadge');
-  const modelSelect = document.getElementById('modelSelect');
+  // --- DOM NODES ---
+  // Masthead & Drawer
+  const openSettingsDrawerBtn = document.getElementById('openSettingsDrawerBtn');
+  const closeDrawerBtn = document.getElementById('closeDrawerBtn');
+  const drawerBackdrop = document.getElementById('drawerBackdrop');
+  const headerKeyStatusDot = document.getElementById('headerKeyStatusDot');
 
-  const navTabs = document.querySelectorAll('.nav-tab');
-  const tabContents = document.querySelectorAll('.tab-content');
-
-  // Tab 1 Elements
-  const samplesContainer = document.getElementById('samplesContainer');
-  const studentMessage = document.getElementById('studentMessage');
-  const clearInputBtn = document.getElementById('clearInputBtn');
-  const accordionToggle = document.getElementById('accordionToggle');
-  const contextAccordion = document.querySelector('.context-accordion');
-  
-  const ctxAudience = document.getElementById('ctxAudience');
+  // Composer Nodes
+  const studentMessageInput = document.getElementById('studentMessageInput');
+  const samplesPills = document.getElementById('samplesPills');
+  const toggleContextBtn = document.getElementById('toggleContextBtn');
+  const contextBody = document.getElementById('contextBody');
   const ctxPronoun = document.getElementById('ctxPronoun');
-  const ctxOldIssue = document.getElementById('ctxOldIssue');
-  const ctxOldPrescription = document.getElementById('ctxOldPrescription');
+  const ctxAudience = document.getElementById('ctxAudience');
   const ctxCurrentIssue = document.getElementById('ctxCurrentIssue');
   const ctxCurrentPrescription = document.getElementById('ctxCurrentPrescription');
-  const ctxAppointmentDays = document.getElementById('ctxAppointmentDays');
+  const clearInputBtn = document.getElementById('clearInputBtn');
+  const generateRepliesBtn = document.getElementById('generateRepliesBtn');
+  const loadingSpinner = document.getElementById('loadingSpinner');
+  const generateBtnText = document.getElementById('generateBtnText');
 
-  const analyzeBtn = document.getElementById('analyzeBtn');
-  const emptyPlaceholder = document.getElementById('emptyPlaceholder');
-  const sensitivityAlert = document.getElementById('sensitivityAlert');
-  const alertIcon = document.getElementById('alertIcon');
-  const alertTitle = document.getElementById('alertTitle');
-  const alertBadge = document.getElementById('alertBadge');
-  const alertReason = document.getElementById('alertReason');
-  const redFlagWarning = document.getElementById('redFlagWarning');
+  // Results Desk Nodes
+  const resultsDesk = document.getElementById('resultsDesk');
+  const emptyWelcome = document.getElementById('emptyWelcome');
+  const sensitivityBanner = document.getElementById('sensitivityBanner');
+  const bannerTag = document.getElementById('bannerTag');
+  const bannerTitle = document.getElementById('bannerTitle');
+  const bannerDesc = document.getElementById('bannerDesc');
+  const suggestionsStack = document.getElementById('suggestionsStack');
+  const activeToneChip = document.getElementById('activeToneChip');
+  const finalEditorTextarea = document.getElementById('finalEditorTextarea');
+  const copyToClipboardBtn = document.getElementById('copyToClipboardBtn');
+  const confirmSendBtn = document.getElementById('confirmSendBtn');
 
-  const analysisCard = document.getElementById('analysisCard');
-  const analysisText = document.getElementById('analysisText');
+  // Drawer Nodes
+  const drawerApiKeyInput = document.getElementById('drawerApiKeyInput');
+  const toggleApiKeyViewBtn = document.getElementById('toggleApiKeyViewBtn');
+  const saveApiKeyBtn = document.getElementById('saveApiKeyBtn');
+  const drawerModelSelect = document.getElementById('drawerModelSelect');
+  const keyStatusIndicator = document.getElementById('keyStatusIndicator');
+  const docTabsList = document.getElementById('docTabsList');
+  const drawerDocEditor = document.getElementById('drawerDocEditor');
+  const docSaveIndicator = document.getElementById('docSaveIndicator');
+  const saveDocumentBtn = document.getElementById('saveDocumentBtn');
+  const historyMiniList = document.getElementById('historyMiniList');
 
-  const repliesSection = document.getElementById('repliesSection');
-  const repliesList = document.getElementById('repliesList');
+  // Toast
+  const toastBubble = document.getElementById('toastBubble');
+  const toastSymbol = document.getElementById('toastSymbol');
+  const toastMessage = document.getElementById('toastMessage');
 
-  const finalEditorCard = document.getElementById('finalEditorCard');
-  const selectedToneBadge = document.getElementById('selectedToneBadge');
-  const finalMessageText = document.getElementById('finalMessageText');
-  const copyFinalBtn = document.getElementById('copyFinalBtn');
-  const approveSendBtn = document.getElementById('approveSendBtn');
-  const sendStatusMsg = document.getElementById('sendStatusMsg');
-
-  // Tab 2 Elements (Docs)
-  const docFileList = document.getElementById('docFileList');
-  const currentEditingFilename = document.getElementById('currentEditingFilename');
-  const docSaveStatus = document.getElementById('docSaveStatus');
-  const docContentTextarea = document.getElementById('docContentTextarea');
-  const saveCurrentDocBtn = document.getElementById('saveCurrentDocBtn');
-  const reloadDocsBtn = document.getElementById('reloadDocsBtn');
-
-  // Tab 3 Elements (History)
-  const historyTableBody = document.getElementById('historyTableBody');
-  const refreshHistoryBtn = document.getElementById('refreshHistoryBtn');
-
-  // Toast Container
-  const toastContainer = document.getElementById('toastContainer');
-
-  // --- INITIALIZATION ---
+  // --- INIT ---
   initApiKey();
-  initNavigation();
   initSamples();
-  initAccordion();
-  loadDocuments();
-  loadHistory();
+  bindInteractions();
 
-  // --- API KEY FUNCTIONS ---
+  // --- API KEY & SETTINGS ---
   function initApiKey() {
-    const savedKey = localStorage.getItem('gemini_api_key') || '';
-    const savedModel = localStorage.getItem('gemini_model') || 'gemini-2.0-flash';
-    
-    if (savedKey) {
-      apiKeyInput.value = savedKey;
-      updateApiKeyStatus(true);
-    } else {
-      updateApiKeyStatus(false);
+    const key = localStorage.getItem('gemini_api_key') || '';
+    let model = localStorage.getItem('gemini_model') || 'gemini-3.6-flash';
+
+    if (model === 'gemini-2.0-flash' || model === 'gemini-1.5-flash') {
+      model = 'gemini-3.6-flash';
+      localStorage.setItem('gemini_model', 'gemini-3.6-flash');
     }
 
-    modelSelect.value = savedModel;
+    drawerApiKeyInput.value = key;
+    drawerModelSelect.value = model;
+    updateKeyStatusDisplay(Boolean(key));
 
-    toggleApiKeyBtn.addEventListener('click', () => {
-      if (apiKeyInput.type === 'password') {
-        apiKeyInput.type = 'text';
-        toggleApiKeyBtn.textContent = '🔒';
+    toggleApiKeyViewBtn.addEventListener('click', () => {
+      if (drawerApiKeyInput.type === 'password') {
+        drawerApiKeyInput.type = 'text';
+        toggleApiKeyViewBtn.textContent = 'Ẩn';
       } else {
-        apiKeyInput.type = 'password';
-        toggleApiKeyBtn.textContent = '👁️';
+        drawerApiKeyInput.type = 'password';
+        toggleApiKeyViewBtn.textContent = 'Hiện';
       }
     });
 
     saveApiKeyBtn.addEventListener('click', () => {
-      const key = apiKeyInput.value.trim();
-      if (key) {
-        localStorage.setItem('gemini_api_key', key);
-        updateApiKeyStatus(true);
-        showToast('Đã lưu Gemini API Key thành công!', 'success');
+      const val = drawerApiKeyInput.value.trim();
+      if (val) {
+        localStorage.setItem('gemini_api_key', val);
+        updateKeyStatusDisplay(true);
+        showToast('Đã lưu Gemini API Key!', '✓');
       } else {
         localStorage.removeItem('gemini_api_key');
-        updateApiKeyStatus(false);
-        showToast('Đã xóa API Key.', 'info');
+        updateKeyStatusDisplay(false);
+        showToast('Đã gỡ bỏ API Key.', 'ℹ');
       }
     });
 
-    modelSelect.addEventListener('change', () => {
-      localStorage.setItem('gemini_model', modelSelect.value);
-      showToast(`Đã chuyển sang model: ${modelSelect.value}`, 'info');
+    drawerModelSelect.addEventListener('change', () => {
+      localStorage.setItem('gemini_model', drawerModelSelect.value);
+      showToast(`Mô hình: ${drawerModelSelect.value}`, '✓');
     });
   }
 
-  function updateApiKeyStatus(hasKey) {
+  function updateKeyStatusDisplay(hasKey) {
     if (hasKey) {
-      apiKeyStatusBadge.className = 'badge badge-green';
-      apiKeyStatusBadge.textContent = 'Đã cấu hình Key';
+      headerKeyStatusDot.classList.add('active');
+      keyStatusIndicator.className = 'key-status-indicator ready';
+      keyStatusIndicator.textContent = '✓ Sẵn sàng';
     } else {
-      apiKeyStatusBadge.className = 'badge badge-yellow';
-      apiKeyStatusBadge.textContent = 'Chưa có Key';
+      headerKeyStatusDot.classList.remove('active');
+      keyStatusIndicator.className = 'key-status-indicator';
+      keyStatusIndicator.textContent = 'Chưa có Key';
     }
   }
 
   function getApiKey() {
-    return apiKeyInput.value.trim() || localStorage.getItem('gemini_api_key') || '';
+    return drawerApiKeyInput.value.trim() || localStorage.getItem('gemini_api_key') || '';
   }
 
-  // --- NAVIGATION ---
-  function initNavigation() {
-    navTabs.forEach(tab => {
-      tab.addEventListener('click', () => {
-        const targetTab = tab.dataset.tab;
-        navTabs.forEach(t => t.classList.remove('active'));
-        tabContents.forEach(c => c.classList.remove('active'));
-
-        tab.classList.add('active');
-        document.getElementById(targetTab).classList.add('active');
-
-        if (targetTab === 'tab-docs') {
-          if (Object.keys(documentsCache).length === 0) loadDocuments();
-        } else if (targetTab === 'tab-history') {
-          loadHistory();
-        }
-      });
-    });
+  function getModel() {
+    return drawerModelSelect.value || localStorage.getItem('gemini_model') || 'gemini-3.6-flash';
   }
 
-  // --- ACCORDION ---
-  function initAccordion() {
-    accordionToggle.addEventListener('click', () => {
-      contextAccordion.classList.toggle('open');
-    });
-
-    clearInputBtn.addEventListener('click', () => {
-      studentMessage.value = '';
-      ctxAudience.value = '';
-      ctxPronoun.value = 'thầy - em';
-      ctxOldIssue.value = '';
-      ctxOldPrescription.value = '';
-      ctxCurrentIssue.value = '';
-      ctxCurrentPrescription.value = '';
-      ctxAppointmentDays.value = '';
-      resetOutputView();
-      showToast('Đã xóa trắng thông tin nhập.', 'info');
-    });
-  }
-
-  // --- SAMPLES LOADER & 1-CLICK TEST ---
+  // --- SAMPLES ---
   async function initSamples() {
     try {
       const res = await fetch('/api/samples');
@@ -184,410 +136,339 @@ document.addEventListener('DOMContentLoaded', () => {
         samplesCache = data.samples;
       }
     } catch (e) {
-      console.warn('Lỗi khi tải samples:', e);
+      console.warn('Samples load note:', e);
     }
 
-    // Gắn sự kiện click vào các nút mẫu
-    document.querySelectorAll('.sample-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const sampleId = btn.dataset.sampleId;
-        const sample = samplesCache.find(s => s.id === sampleId);
-        if (!sample) return;
+    document.querySelectorAll('.sample-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        const id = pill.dataset.sampleId;
+        const s = samplesCache.find(item => item.id === id);
+        if (!s) return;
 
-        // Điền tin nhắn học viên
-        studentMessage.value = sample.input_message;
-
-        // Điền context nếu có
-        if (sample.context) {
-          if (sample.context.audience) ctxAudience.value = sample.context.audience;
-          if (sample.context.pronoun) ctxPronoun.value = sample.context.pronoun;
-          if (sample.context.topic) ctxCurrentIssue.value = sample.context.topic;
-          contextAccordion.classList.add('open');
+        studentMessageInput.value = s.input_message || '';
+        
+        if (s.context) {
+          if (s.context.pronoun) ctxPronoun.value = s.context.pronoun;
+          if (s.context.audience) ctxAudience.value = s.context.audience;
+          if (s.context.topic) ctxCurrentIssue.value = s.context.topic;
         }
 
-        // Tự động cuộn nhẹ đến khung phân tích
-        showToast(`Đã nạp mẫu: "${sample.title}"`, 'info');
+        showToast(`Đã nạp mẫu: ${s.student_name || s.title || ''}`, '♩');
       });
     });
   }
 
-  // --- TAB 1: PHÂN TÍCH & SINH GỢI Ý ---
-  analyzeBtn.addEventListener('click', async () => {
-    const message = studentMessage.value.trim();
-    if (!message) {
-      showToast('Vui lòng nhập tin nhắn của học viên trước khi bấm phân tích!', 'error');
-      studentMessage.focus();
+  // --- INTERACTIONS & GENERATE ---
+  function bindInteractions() {
+    // Drawer open/close
+    openSettingsDrawerBtn.addEventListener('click', () => {
+      drawerBackdrop.classList.remove('hidden');
+      loadDrawerDocuments();
+      loadDrawerHistory();
+    });
+
+    closeDrawerBtn.addEventListener('click', () => {
+      drawerBackdrop.classList.add('hidden');
+    });
+
+    drawerBackdrop.addEventListener('click', (e) => {
+      if (e.target === drawerBackdrop) {
+        drawerBackdrop.classList.add('hidden');
+      }
+    });
+
+    // Context Accordion
+    toggleContextBtn.addEventListener('click', () => {
+      const isHidden = contextBody.classList.toggle('hidden');
+      toggleContextBtn.querySelector('.toggle-glyph').textContent = isHidden ? '+' : '−';
+    });
+
+    // Clear input
+    clearInputBtn.addEventListener('click', () => {
+      studentMessageInput.value = '';
+      ctxAudience.value = '';
+      ctxCurrentIssue.value = '';
+      ctxCurrentPrescription.value = '';
+      resultsDesk.classList.add('hidden');
+      emptyWelcome.classList.remove('hidden');
+      studentMessageInput.focus();
+    });
+
+    // Generate replies
+    generateRepliesBtn.addEventListener('click', handleGenerate);
+
+    // Keyboard shortcut Enter in textarea (Cmd/Ctrl + Enter)
+    studentMessageInput.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        handleGenerate();
+      }
+    });
+
+    // Copy to clipboard
+    copyToClipboardBtn.addEventListener('click', () => {
+      const text = finalEditorTextarea.value;
+      if (!text.trim()) return;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+      }
+      showToast('Đã sao chép phản hồi vào bộ nhớ!', '✓');
+    });
+
+    // Confirm Send
+    confirmSendBtn.addEventListener('click', async () => {
+      const chosenText = finalEditorTextarea.value.trim();
+      if (!chosenText) {
+        showToast('Nội dung không được để trống!', '⚠');
+        return;
+      }
+
+      const activeTone = currentReplies[selectedReplyIdx]?.tone || 'Phong cách chuẩn';
+
+      try {
+        fetch('/api/history', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            student_message: studentMessageInput.value.trim(),
+            chosen_reply: chosenText,
+            tone: activeTone,
+            sent_at: new Date().toISOString()
+          })
+        });
+      } catch (e) {}
+
+      showToast('Đã ghi nhận phản hồi vào sổ tay!', '✓');
+    });
+  }
+
+  // --- CORE GENERATION ENGINE ---
+  async function handleGenerate() {
+    const msg = studentMessageInput.value.trim();
+    if (!msg) {
+      showToast('Vui lòng nhập tin nhắn học viên trước!', '⚠');
+      studentMessageInput.focus();
       return;
     }
 
     const apiKey = getApiKey();
-    if (!apiKey) {
-      showToast('Vui lòng nhập Gemini API Key ở góc trên màn hình!', 'error');
-      apiKeyInput.focus();
-      return;
-    }
-
-    const context = {
-      audience: ctxAudience.value.trim(),
-      pronoun: ctxPronoun.value.trim(),
-      old_issue: ctxOldIssue.value.trim(),
-      old_prescription: ctxOldPrescription.value.trim(),
-      current_issue: ctxCurrentIssue.value.trim(),
-      current_prescription: ctxCurrentPrescription.value.trim(),
-      appointment_days: ctxAppointmentDays.value.trim()
-    };
-
     setLoading(true);
 
     try {
-      const response = await fetch('/api/generate', {
+      const context = {
+        pronoun: ctxPronoun.value,
+        audience: ctxAudience.value.trim(),
+        current_issue: ctxCurrentIssue.value.trim(),
+        current_prescription: ctxCurrentPrescription.value.trim()
+      };
+
+      const res = await fetch('/api/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-gemini-api-key': apiKey
         },
         body: JSON.stringify({
-          message,
-          context,
-          model: modelSelect.value
+          message: msg,
+          context: context,
+          model: getModel()
         })
       });
 
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.error || 'Đã xảy ra lỗi trong quá trình xử lý');
+      const json = await res.json();
+      if (!json.success) {
+        throw new Error(json.error || 'Lỗi xử lý phản hồi');
       }
 
-      renderResults(result.data, message, context);
-      showToast('Đã phân loại và sinh thành công 5 phương án!', 'success');
+      renderResults(json.data);
     } catch (err) {
-      console.error(err);
-      showToast(err.message, 'error');
+      showToast(err.message, '⚠');
     } finally {
       setLoading(false);
     }
-  });
+  }
 
   function setLoading(isLoading) {
     if (isLoading) {
-      analyzeBtn.classList.add('loading');
-      analyzeBtn.disabled = true;
-      document.getElementById('btnText').textContent = 'Đang phân tích & sinh 5 phương án...';
+      loadingSpinner.classList.remove('hidden');
+      generateBtnText.textContent = 'Đang lắng nghe & soạn bài...';
+      generateRepliesBtn.disabled = true;
+      generateRepliesBtn.style.opacity = '0.75';
     } else {
-      analyzeBtn.classList.remove('loading');
-      analyzeBtn.disabled = false;
-      document.getElementById('btnText').textContent = '✨ Phân Tích & Sinh 5 Gợi Ý Trả Lời';
+      loadingSpinner.classList.add('hidden');
+      generateBtnText.textContent = 'Lắng nghe & Soạn 5 phương án';
+      generateRepliesBtn.disabled = false;
+      generateRepliesBtn.style.opacity = '1';
     }
   }
 
-  function renderResults(data, originalMessage, context) {
-    emptyPlaceholder.classList.add('hidden');
+  // --- RENDER RESULTS ---
+  function renderResults(data) {
+    emptyWelcome.classList.add('hidden');
+    resultsDesk.classList.remove('hidden');
 
-    // 1. Hiển thị cờ nhạy cảm (Sensitivity)
-    const sensitivity = (data.sensitivity || 'xanh').toLowerCase();
-    sensitivityAlert.className = `sensitivity-card ${sensitivity}`;
-    sensitivityAlert.classList.remove('hidden');
+    // 1. Sensitivity Banner (Subtle, dignified)
+    const sens = (data.sensitivity || 'xanh').toLowerCase();
+    sensitivityBanner.className = `sensitivity-banner banner-${sens}`;
 
-    if (sensitivity === 'do') {
-      alertIcon.textContent = '🔴';
-      alertTitle.textContent = 'PHÁT HIỆN CA CỜ ĐỎ: BẮT BUỘC NGƯỜI THẬT DUYỆT';
-      alertBadge.className = 'badge badge-red';
-      alertBadge.textContent = 'CỜ ĐỎ';
-      redFlagWarning.classList.remove('hidden');
-    } else if (sensitivity === 'vang') {
-      alertIcon.textContent = '🟡';
-      alertTitle.textContent = 'PHÂN LOẠI: CỜ VÀNG (CẦN KIỂM TRA CHUYÊN MÔN / QUY ĐỊNH)';
-      alertBadge.className = 'badge badge-yellow';
-      alertBadge.textContent = 'CỜ VÀNG';
-      redFlagWarning.classList.add('hidden');
+    if (sens === 'do') {
+      bannerTag.textContent = 'Lưu tâm đặc biệt';
+      bannerTitle.textContent = 'Biến cố sức khỏe hoặc gia đình';
+      bannerDesc.textContent = data.flag_reason || 'Học viên đang đối diện với nghịch cảnh. Thầy vui lòng đọc chậm, thấu cảm, không thúc ép tiến độ bài vở và tôn trọng quyền lợi hoàn phí.';
+    } else if (sens === 'vang') {
+      bannerTag.textContent = 'Xem lại bài tập';
+      bannerTitle.textContent = 'Kỹ thuật ngón hoặc Quy định';
+      bannerDesc.textContent = data.flag_reason || 'Nhận xét cần độ chính xác sư phạm cao. Thầy kiểm tra lại mốc thời gian clip hoặc đối chiếu điều kiện bảo lưu 90 ngày.';
     } else {
-      alertIcon.textContent = '🟢';
-      alertTitle.textContent = 'PHÂN LOẠI: CỜ XANH (AN TOÀN / CHÀO HỎI / ĐỘNG VIÊN)';
-      alertBadge.className = 'badge badge-green';
-      alertBadge.textContent = 'CỜ XANH';
-      redFlagWarning.classList.add('hidden');
+      bannerTag.textContent = 'Thường nhật';
+      bannerTitle.textContent = 'Tâm sự & Thói quen luyện tập';
+      bannerDesc.textContent = data.flag_reason || 'Tin nhắn học tập thông thường, khích lệ học viên duy trì 10-15 phút chạm phím nhẹ nhàng.';
     }
 
-    alertReason.textContent = data.flag_reason || 'Được phân loại theo tiêu chuẩn quy định.';
-
-    // 2. Nhận định tình huống
-    if (data.analysis) {
-      analysisText.textContent = data.analysis;
-      analysisCard.classList.remove('hidden');
-    } else {
-      analysisCard.classList.add('hidden');
-    }
-
-    // 3. Render 5 replies
+    // 2. Suggestions Deck (5 Options)
     currentReplies = data.replies || [];
-    repliesList.innerHTML = '';
+    selectedReplyIdx = 0;
 
-    currentReplies.forEach((replyObj, idx) => {
-      const card = document.createElement('div');
-      card.className = 'reply-card';
-      card.dataset.index = idx;
-
-      card.innerHTML = `
-        <div class="reply-card-header">
-          <span class="reply-tone-badge">Phương án ${idx + 1}: ${escapeHtml(replyObj.tone || 'Phong cách chuẩn')}</span>
-          <div class="reply-card-actions">
-            <button type="button" class="btn btn-secondary btn-sm copy-btn" data-index="${idx}">📋 Sao chép</button>
-            <button type="button" class="btn btn-primary btn-sm select-btn" data-index="${idx}">✏️ Chọn & Sửa</button>
-          </div>
+    suggestionsStack.innerHTML = currentReplies.map((r, idx) => `
+      <div class="suggestion-card ${idx === 0 ? 'active-option' : ''}" data-idx="${idx}">
+        <div class="suggestion-card-top">
+          <span class="tone-badge">Phương án ${idx + 1}: ${escapeHtml(r.tone || 'Góc nhìn')}</span>
+          <span class="option-select-cue">${idx === 0 ? 'Đang chọn' : 'Bấm để chọn'}</span>
         </div>
-        <div class="reply-content">${escapeHtml(replyObj.content || '')}</div>
-      `;
+        <div class="suggestion-content">${escapeHtml(r.content || '')}</div>
+      </div>
+    `).join('');
 
-      repliesList.appendChild(card);
-    });
-
-    repliesSection.classList.remove('hidden');
-
-    // Gắn sự kiện cho các nút trong reply cards
-    document.querySelectorAll('.copy-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const index = parseInt(btn.dataset.index, 10);
-        if (currentReplies[index]) {
-          copyToClipboard(currentReplies[index].content);
-          showToast(`Đã sao chép Phương án ${index + 1}!`, 'success');
-        }
+    suggestionsStack.querySelectorAll('.suggestion-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const idx = parseInt(card.dataset.idx, 10);
+        selectOption(idx);
       });
     });
 
-    document.querySelectorAll('.select-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const index = parseInt(btn.dataset.index, 10);
-        selectReply(index);
-      });
-    });
-
-    // Mặc định chọn phương án 1
+    // Populate active editor
     if (currentReplies.length > 0) {
-      selectReply(0);
+      selectOption(0);
     }
 
-    // Cuộn mượt đến kết quả
-    sensitivityAlert.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // Smooth scroll into results
+    resultsDesk.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
-  function selectReply(index) {
-    selectedReplyIndex = index;
-    const reply = currentReplies[index];
-    if (!reply) return;
+  function selectOption(index) {
+    selectedReplyIdx = index;
+    const r = currentReplies[index];
+    if (!r) return;
 
-    // Highlight card được chọn
-    document.querySelectorAll('.reply-card').forEach((card, i) => {
-      if (i === index) card.classList.add('selected');
-      else card.classList.remove('selected');
+    suggestionsStack.querySelectorAll('.suggestion-card').forEach((c, i) => {
+      if (i === index) {
+        c.classList.add('active-option');
+        c.querySelector('.option-select-cue').textContent = 'Đang chọn';
+      } else {
+        c.classList.remove('active-option');
+        c.querySelector('.option-select-cue').textContent = 'Bấm để chọn';
+      }
     });
 
-    // Hiển thị khung soạn thảo duyệt cuối cùng
-    finalEditorCard.classList.remove('hidden');
-    selectedToneBadge.textContent = `Phương án ${index + 1}: ${reply.tone || 'Gợi ý'}`;
-    finalMessageText.value = reply.content;
-    sendStatusMsg.classList.add('hidden');
-
-    finalEditorCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    activeToneChip.textContent = `Phương án ${index + 1}: ${r.tone || 'Gợi ý'}`;
+    finalEditorTextarea.value = r.content || '';
   }
 
-  copyFinalBtn.addEventListener('click', () => {
-    const text = finalMessageText.value;
-    if (!text.trim()) {
-      showToast('Khung tin nhắn đang trống!', 'error');
-      return;
-    }
-    copyToClipboard(text);
-    showToast('Đã sao chép tin nhắn vào clipboard thành công!', 'success');
-  });
-
-  approveSendBtn.addEventListener('click', async () => {
-    const text = finalMessageText.value.trim();
-    if (!text) {
-      showToast('Tin nhắn gửi không được để trống!', 'error');
-      return;
-    }
-
-    const currentSample = currentReplies[selectedReplyIndex] || {};
-    const payload = {
-      student_message: studentMessage.value.trim(),
-      chosen_reply: text,
-      tone: currentSample.tone || 'Tự soạn / Chỉnh sửa',
-      sensitivity: alertBadge.textContent.toLowerCase(),
-      sent_at: new Date().toISOString()
-    };
-
+  // --- DRAWER KNOWLEDGE BASE & HISTORY ---
+  async function loadDrawerDocuments() {
     try {
-      const res = await fetch('/api/history', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (data.success) {
-        sendStatusMsg.className = 'status-msg success';
-        sendStatusMsg.textContent = '🎉 Đã ghi nhận phản hồi thành công vào lịch sử học tập của Thầy Minh!';
-        sendStatusMsg.classList.remove('hidden');
-        showToast('Đã lưu phản hồi thành công!', 'success');
-      }
-    } catch (e) {
-      showToast('Lỗi khi lưu phản hồi vào lịch sử', 'error');
-    }
-  });
-
-  function resetOutputView() {
-    emptyPlaceholder.classList.remove('hidden');
-    sensitivityAlert.classList.add('hidden');
-    analysisCard.classList.add('hidden');
-    repliesSection.classList.add('hidden');
-    finalEditorCard.classList.add('hidden');
-  }
-
-  // --- TAB 2: QUẢN LÝ TÀI LIỆU (KNOWLEDGE BASE) ---
-  async function loadDocuments() {
-    try {
-      docSaveStatus.textContent = 'Đang tải...';
+      docSaveIndicator.textContent = 'Đang tải...';
       const res = await fetch('/api/documents');
       const data = await res.json();
       if (data.success && data.documents) {
-        documentsCache = data.documents;
-        switchEditingFile(currentEditingFile);
-        docSaveStatus.textContent = 'Đã đồng bộ';
+        cachedDocs = data.documents;
+        switchDocTab(currentDocFile);
+        docSaveIndicator.textContent = 'Đã đồng bộ';
       }
     } catch (e) {
-      console.error(e);
-      showToast('Lỗi khi tải tài liệu', 'error');
-      docSaveStatus.textContent = 'Lỗi tải dữ liệu';
+      docSaveIndicator.textContent = 'Lỗi tải dữ liệu';
     }
   }
 
-  function switchEditingFile(filename) {
-    currentEditingFile = filename;
-    currentEditingFilename.textContent = filename;
-    docContentTextarea.value = documentsCache[filename] || '';
+  function switchDocTab(filename) {
+    currentDocFile = filename;
+    drawerDocEditor.value = cachedDocs[filename] || '';
 
-    // Cập nhật trạng thái active sidebar
-    document.querySelectorAll('.file-item').forEach(item => {
-      if (item.dataset.filename === filename) item.classList.add('active');
-      else item.classList.remove('active');
+    docTabsList.querySelectorAll('.doc-pill').forEach(pill => {
+      if (pill.dataset.file === filename) pill.classList.add('active');
+      else pill.classList.remove('active');
     });
-
-    docSaveStatus.textContent = 'Sẵn sàng chỉnh sửa';
   }
 
-  // Bắt sự kiện chọn file bên sidebar
-  document.querySelectorAll('.file-item').forEach(item => {
-    item.addEventListener('click', () => {
-      const filename = item.dataset.filename;
-      switchEditingFile(filename);
-    });
+  docTabsList.querySelectorAll('.doc-pill').forEach(pill => {
+    pill.addEventListener('click', () => switchDocTab(pill.dataset.file));
   });
 
-  // Lưu tài liệu vào server
-  saveCurrentDocBtn.addEventListener('click', async () => {
-    const content = docContentTextarea.value;
-    docSaveStatus.textContent = 'Đang lưu...';
+  saveDocumentBtn.addEventListener('click', async () => {
+    const content = drawerDocEditor.value;
+    docSaveIndicator.textContent = 'Đang lưu...';
     try {
       const res = await fetch('/api/documents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          filename: currentEditingFile,
+          filename: currentDocFile,
           content: content
         })
       });
-
       const data = await res.json();
       if (data.success) {
-        documentsCache[currentEditingFile] = content;
-        docSaveStatus.textContent = '✅ Đã lưu vào bộ nhớ AI';
-        showToast(`Đã lưu "${currentEditingFile}" vào bộ nhớ AI!`, 'success');
+        cachedDocs[currentDocFile] = content;
+        docSaveIndicator.textContent = '✓ Đã lưu thành công';
+        showToast(`Đã lưu "${currentDocFile}" vào AI!`, '✓');
       } else {
         throw new Error(data.error);
       }
     } catch (err) {
-      docSaveStatus.textContent = '❌ Lỗi lưu file';
-      showToast(`Lỗi: ${err.message}`, 'error');
+      docSaveIndicator.textContent = 'Lỗi lưu';
+      showToast(err.message, '⚠');
     }
   });
 
-  reloadDocsBtn.addEventListener('click', () => {
-    loadDocuments();
-    showToast('Đã tải lại toàn bộ tài liệu từ đĩa.', 'info');
-  });
-
-  // --- TAB 3: LỊCH SỬ DUYỆT TIN NHẮN ---
-  async function loadHistory() {
+  async function loadDrawerHistory() {
     try {
       const res = await fetch('/api/history');
       const data = await res.json();
-      if (data.success && data.history) {
-        renderHistoryTable(data.history);
+      if (data.success && data.history && data.history.length > 0) {
+        historyMiniList.innerHTML = data.history.slice(0, 5).map(item => `
+          <div class="history-item-mini">
+            <div style="font-weight: 600; color: var(--ink); margin-bottom: 2px;">
+              ${escapeHtml(item.tone || 'Gợi ý')} • <span style="font-size: 11px; color: var(--ink-muted);">${new Date(item.timestamp || item.sent_at).toLocaleDateString('vi-VN')}</span>
+            </div>
+            <div style="color: var(--ink-secondary); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+              ${escapeHtml(item.chosen_reply || '')}
+            </div>
+          </div>
+        `).join('');
+      } else {
+        historyMiniList.innerHTML = '<div class="history-empty-note">Chưa có phản hồi nào được ghi nhận.</div>';
       }
-    } catch (e) {
-      console.error(e);
-    }
+    } catch (e) {}
   }
 
-  refreshHistoryBtn.addEventListener('click', () => {
-    loadHistory();
-    showToast('Đã làm mới nhật ký!', 'info');
-  });
+  // --- TOAST NOTIFICATION ---
+  let toastTimer = null;
+  function showToast(msg, sym = '✓') {
+    toastSymbol.textContent = sym;
+    toastMessage.textContent = msg;
+    toastBubble.classList.remove('hidden');
 
-  function renderHistoryTable(historyList) {
-    if (!historyList || historyList.length === 0) {
-      historyTableBody.innerHTML = '<tr><td colspan="5" class="text-center">Chưa có lịch sử duyệt tin nhắn nào.</td></tr>';
-      return;
-    }
-
-    historyTableBody.innerHTML = historyList.map(item => {
-      const dateStr = item.timestamp ? new Date(item.timestamp).toLocaleString('vi-VN') : 'Vừa xong';
-      const badgeClass = item.sensitivity === 'do' ? 'badge-red' : (item.sensitivity === 'vang' ? 'badge-yellow' : 'badge-green');
-      return `
-        <tr>
-          <td style="white-space: nowrap; font-size: 11.5px; color: #64748b;">${dateStr}</td>
-          <td><span class="badge ${badgeClass}">${escapeHtml(item.sensitivity || 'XANH')}</span></td>
-          <td style="max-width: 260px; word-break: break-word;">${escapeHtml(item.student_message || '')}</td>
-          <td style="max-width: 320px; word-break: break-word; font-weight: 500;">${escapeHtml(item.chosen_reply || '')}</td>
-          <td><span class="badge badge-blue">${escapeHtml(item.tone || 'Gợi ý')}</span></td>
-        </tr>
-      `;
-    }).join('');
-  }
-
-  // --- UTILITIES ---
-  function showToast(message, type = 'info') {
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    
-    let icon = 'ℹ️';
-    if (type === 'success') icon = '✅';
-    if (type === 'error') icon = '❌';
-
-    toast.innerHTML = `<span>${icon}</span> <span>${escapeHtml(message)}</span>`;
-    toastContainer.appendChild(toast);
-
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      toast.style.transform = 'translateY(12px)';
-      toast.style.transition = 'all 0.3s ease';
-      setTimeout(() => toast.remove(), 300);
-    }, 3500);
-  }
-
-  function copyToClipboard(text) {
-    if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(text);
-    } else {
-      const textArea = document.createElement('textarea');
-      textArea.value = text;
-      document.body.appendChild(textArea);
-      textArea.select();
-      document.execCommand('copy');
-      textArea.remove();
-    }
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      toastBubble.classList.add('hidden');
+    }, 2500);
   }
 
   function escapeHtml(str) {

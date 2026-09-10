@@ -207,12 +207,16 @@ const server = http.createServer(async (req, res) => {
     // 5. API Phân loại và Sinh 5 phương án trả lời bằng Gemini
     if (pathname === '/api/generate' && method === 'POST') {
       const body = await parseRequestBody(req);
-      const {
+      let {
         message = '',
         context = {},
         apiKey: clientApiKey,
-        model = 'gemini-2.0-flash'
+        model = 'gemini-3.6-flash'
       } = body;
+
+      if (!model || model === 'gemini-2.0-flash') {
+        model = 'gemini-3.6-flash';
+      }
 
       const apiKey = clientApiKey || req.headers['x-gemini-api-key'] || process.env.GEMINI_API_KEY;
 
@@ -379,13 +383,57 @@ ${redFlagsContent}
       // Gọi Gemini API bằng native fetch
       const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
       
-      const response = await fetch(geminiEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(geminiRequestBody)
-      });
+      let response;
+      try {
+        response = await fetch(geminiEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(geminiRequestBody)
+        });
+      } catch (fetchErr) {
+        console.error('Fetch to Gemini failed:', fetchErr);
+
+        // Kiểm tra xem có thể dùng fallback từ mẫu nếu có
+        const trimmedMsg = message.trim().toLowerCase();
+        const matchedSample = fewShots.find(s => 
+          trimmedMsg.includes(s.input_message.toLowerCase().slice(0, 25)) ||
+          s.input_message.toLowerCase().includes(trimmedMsg.slice(0, 25))
+        );
+
+        if (matchedSample) {
+          const tones = [
+            'Tình cảm & Đồng cảm sâu sắc',
+            'Chuyên môn kỹ thuật & Sư phạm',
+            'Rõ ràng theo Quy định & Policy',
+            'Ngắn gọn, súc tích',
+            'Khích lệ & Tạo động lực'
+          ];
+          const replies = (matchedSample.model_replies || []).slice(0, 5).map((content, idx) => ({
+            tone: typeof content === 'object' ? content.tone : (tones[idx] || `Góc nhìn ${idx + 1}`),
+            content: typeof content === 'object' ? content.content : content
+          }));
+
+          return sendJSON(res, 200, {
+            success: true,
+            isDemoFallback: true,
+            data: {
+              sensitivity: redFlagCheck.isRed ? 'do' : matchedSample.sensitivity,
+              flag_reason: redFlagCheck.isRed ? redFlagCheck.reason : (matchedSample.flag_reason || 'Mẫu dữ liệu thực tế'),
+              analysis: `[Chế độ dự phòng]: Không thể kết nối tới Google Gemini API (Lỗi mạng/DNS: ${fetchErr.message}). Đã tự động hiển thị dữ liệu mẫu của Thầy Minh.`,
+              replies: replies
+            },
+            redFlagTriggered: redFlagCheck.isRed
+          });
+        }
+
+        let detailMsg = fetchErr.message || 'Lỗi mạng khi kết nối Gemini API';
+        if (fetchErr.cause && fetchErr.cause.code === 'ENOTFOUND') {
+          detailMsg = 'Không thể kết nối tới Google Gemini API (Lỗi DNS / Mạng không có Internet). Vui lòng khởi động lệnh "node server.js" trực tiếp trong Terminal của máy bạn để có đầy đủ kết nối mạng.';
+        }
+        return sendJSON(res, 503, { success: false, error: detailMsg });
+      }
 
       if (!response.ok) {
         const errText = await response.text();
