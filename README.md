@@ -1,72 +1,118 @@
-# Bot Trợ Lý "Thầy Minh Piano" 🎹
+# ChatBot Tư Vấn - Thầy Minh Piano
 
-Hệ thống AI Chatbot và Trợ lý duyệt tin nhắn học viên cho Thầy Minh Piano, xây dựng theo kế hoạch chi tiết tại [ke-hoach-xay-dung-bot-thay-minh.md](ke-hoach-xay-dung-bot-thay-minh.md).
+Demo AI copilot hỗ trợ nhân viên trung tâm nhạc xem hội thoại Pancake, lấy lịch sử chat read-only, sinh gợi ý phản hồi bằng AI và lưu câu trả lời demo ở local.
 
----
+## Trạng thái hiện tại
 
-## 🌟 Tính Năng Nổi Bật
+MVP hiện có hai phần chính:
 
-1. **Bộ Lọc Phân Loại Nhạy Cảm 2 Lớp (Đỏ - Vàng - Xanh)**:
-   - 🔴 **CỜ ĐỎ**: Tự động chặn và cảnh báo các ca nhạy cảm cao (học viên bị ung thư, nằm viện, tang sự, khủng hoảng tâm lý...). Tuyệt đối không níu kéo, chỉ an ủi, tôn trọng quyết định tạm ngưng/hoàn tiền và bắt buộc người thật duyệt.
-   - 🟡 **CỜ VÀNG**: Các ca hỏi bài, phân tích kỹ thuật ngón, xin bảo lưu khóa học thông thường...
-   - 🟢 **CỜ XANH**: Chào hỏi, hỏi thăm, động viên tập đàn 15 phút.
-2. **Sinh 5 Phương Án Trả Lời Tối Ưu**:
-   - Phương án 1: Tình cảm & Đồng cảm sâu sắc
-   - Phương án 2: Kỹ thuật & Sư phạm chuẩn (chuẩn xác từng giây theo clip, sửa rotation, xếp ngón...)
-   - Phương án 3: Rõ ràng theo Quy định & Chính sách (Policy bảo lưu 90 ngày, hoàn 2tr800...)
-   - Phương án 4: Ngắn gọn & Súc tích
-   - Phương án 5: Khích lệ & Động lực tích cực
-3. **Form "Bắt Bệnh Ngón Đàn" Chuẩn Văn Phong Thầy Minh (Ảnh 2)**:
-   - Hỗ trợ xưng hô (thầy - em, thầy - chị...)
-   - Bệnh cũ, chỉ định cũ, bệnh hiện tại, chỉ định hiện tại, số ngày hẹn nộp bài.
-4. **Kho Quản Lý & Nạp Tài Liệu Trực Tiếp (Knowledge Base)**:
-   - Xem và chỉnh sửa trực tiếp `persona.md`, `policy.md`, `red_flags.json`, `few_shots.json`, `raw_messages.txt` ngay trên giao diện web.
-   - Khi bấm lưu, dữ liệu được cập nhật tức thì vào bộ nhớ AI cho các lần phân tích tiếp theo.
-5. **Duyệt, Tùy Chỉnh & Nhật Ký Gửi**:
-   - Cho phép chọn 1 trong 5 gợi ý, sửa nhanh trong khung soạn thảo trước khi sao chép hoặc xác nhận gửi.
-   - Lưu lại lịch sử các câu trả lời đã duyệt để liên tục tối ưu hệ thống (Feedback loop).
-6. **Mẫu Tin Nhắn Thử Nghiệm 1-Click**:
-   - Có sẵn các nút test nhanh lấy trực tiếp từ dữ liệu ảnh thực tế (Ảnh 1 đến Ảnh 7).
+- `backend/`: Node.js + TypeScript + Express. Lấy page/conversation/message từ Pancake, sinh gợi ý bằng mock hoặc Gemini, lưu reply demo vào local JSONL.
+- `frontend/`: React + Vite. UI 3 cột gồm danh sách hội thoại, khung chat và panel gợi ý AI.
+- `server.js` + `public/`: demo HTML cũ/legacy, giữ lại để tham khảo AI core và dữ liệu mẫu.
 
----
+Backend hiện chỉ đọc dữ liệu Pancake. Nút gửi demo không gửi tin nhắn về Pancake.
 
-## 🚀 Hướng Dẫn Khởi Động
+## Cấu trúc thư mục
 
-Dự án được viết bằng **Node.js thuần**, không phụ thuộc vào `node_modules` ngoài, cực kỳ nhẹ và chạy ngay lập tức:
+```txt
+ChatBot_TuVan/
+├── backend/                 # API demo mới
+├── frontend/                # UI React demo mới
+├── data/                    # persona, policy, red flags, few-shot
+├── public/                  # UI HTML demo cũ
+├── server.js                # server demo cũ
+├── DEMO_BE_TASKS.md         # task BE đã lập kế hoạch
+├── DEMO_UI_TASKS.md         # task UI đã lập kế hoạch
+└── ke-hoach-xay-dung-bot-thay-minh.md
+```
+
+## Yêu cầu
+
+- Node.js 20+
+- pnpm
+
+## Chạy backend
 
 ```bash
-# Khởi động server (chạy trên cổng 3000)
-node server.js
+cd backend
+pnpm install
+cp .env.example .env
+pnpm dev
 ```
 
-Sau đó mở trình duyệt và truy cập:
-👉 **[http://localhost:3000](http://localhost:3000)**
+Backend mặc định chạy ở:
 
----
-
-## 🔑 Cấu Hình Gemini API Key
-
-- Bạn chỉ cần dán **Gemini API Key** vào ô ở góc trên bên phải màn hình web và bấm **Lưu Key**.
-- Key được lưu an toàn trong `localStorage` trên trình duyệt của bạn và tự động gửi kèm mỗi request phân tích.
-- Nếu chưa có API Key, bạn vẫn có thể bấm vào các nút **Mẫu tin nhắn thử nghiệm** ở trên cùng để xem demo hoạt động ngay lập tức với dữ liệu mẫu!
-
----
-
-## 📁 Cấu Trúc Thư Mục
-
+```txt
+http://localhost:4000
 ```
-chatbot_TTD/
-├── data/
-│   ├── persona.md          # Hồ sơ văn phong, xưng hô, khẩu ngữ nè/ha/nhen, kỹ thuật bắt bệnh ngón
-│   ├── policy.md           # Số liệu cứng: khóa 20 tuần, bảo lưu tối đa 90 ngày, hoàn 2.800.000đ
-│   ├── red_flags.json      # Danh mục từ khóa cờ đỏ (ung thư, cấp cứu, trầm cảm, đám tang...)
-│   ├── few_shots.json      # Các ví dụ hội thoại mẫu Xanh/Vàng/Đỏ
-│   └── raw_messages.txt    # Toàn bộ tin nhắn gốc được cung cấp từ ảnh 1 -> 7
-├── public/
-│   ├── index.html          # Giao diện web chính
-│   ├── style.css           # Giao diện hiện đại, responsive
-│   └── app.js              # Xử lý tương tác, gọi API, nạp tài liệu
-├── ke-hoach-xay-dung-bot-thay-minh.md # Kế hoạch kiến trúc ban đầu
-├── server.js               # Backend Node.js siêu nhẹ phục vụ Web & API
-└── README.md
+
+Các biến env chính:
+
+```bash
+PANCAKE_ACCESS_TOKEN=
+PANCAKE_PAGE_ID=
+PANCAKE_PAGE_ACCESS_TOKEN=
+
+AI_PROVIDER=mock
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-3.6-flash
+AI_KNOWLEDGE_DIR=../data
 ```
+
+Ghi chú:
+
+- `PANCAKE_ACCESS_TOKEN` dùng để list các page và generate `page_access_token` theo từng page.
+- `PANCAKE_PAGE_ID` là optional, chỉ dùng làm page mặc định khi mở UI.
+- `AI_PROVIDER=gemini` để bật Gemini thật. Nếu lỗi AI, backend fallback về mock/few-shot để demo không chết luồng.
+
+## Chạy frontend
+
+```bash
+cd frontend
+pnpm install
+pnpm dev
+```
+
+Frontend mặc định chạy ở:
+
+```txt
+http://localhost:5173
+```
+
+Vite proxy `/api` về backend `http://localhost:4000`.
+
+## API chính
+
+```txt
+GET  /api/health
+GET  /api/pages
+GET  /api/conversations?pageIds=PAGE_ID_1,PAGE_ID_2&limit=30
+GET  /api/conversations/:conversationId/messages?pageId=PAGE_ID
+POST /api/suggestions
+GET  /api/demo-replies
+POST /api/demo-replies
+```
+
+## Luồng demo
+
+1. Frontend gọi `/api/pages`.
+2. Nhân viên chọn một hoặc nhiều page.
+3. Frontend gọi `/api/conversations?pageIds=...`.
+4. Khi chọn hội thoại, frontend gọi message theo đúng `pageId`.
+5. Nhân viên bấm tạo gợi ý AI.
+6. Nhân viên copy hoặc gửi demo. Gửi demo chỉ lưu local, không gọi API gửi tin về Pancake.
+
+## Kiểm tra nhanh
+
+```bash
+pnpm --dir backend typecheck
+pnpm --dir backend build
+pnpm --dir frontend build
+```
+
+## Lưu ý bảo mật
+
+- Không commit `.env`.
+- Không commit token/API key.
+- Không commit `node_modules`, `dist`, hoặc runtime data JSONL.
+- Dữ liệu hội thoại học viên là dữ liệu nhạy cảm, chỉ dùng trong phạm vi demo nội bộ.

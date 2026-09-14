@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+
+# Local runtime data
+backend/data/*.jsonl
+
+# Build caches
+.vite/
+coverage/

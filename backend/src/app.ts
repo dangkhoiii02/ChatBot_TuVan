@@ -1,0 +1,47 @@
+import express from 'express';
+import { demoRepliesRouter } from './routes/demoReplies.routes.js';
+import { conversationsRouter } from './routes/conversations.routes.js';
+import { healthRouter } from './routes/health.routes.js';
+import { pagesRouter } from './routes/pages.routes.js';
+import { suggestionsRouter } from './routes/suggestions.routes.js';
+import { HttpError } from './utils/httpError.js';
+
+export function createApp() {
+  const app = express();
+
+  app.use(express.json({ limit: '1mb' }));
+
+  app.use('/api/health', healthRouter);
+  app.use('/api/pages', pagesRouter);
+  app.use('/api/conversations', conversationsRouter);
+  app.use('/api/suggestions', suggestionsRouter);
+  app.use('/api/demo-replies', demoRepliesRouter);
+
+  app.use((_req, _res, next) => {
+    next(new HttpError(404, 'Route not found'));
+  });
+
+  app.use(
+    (
+      error: unknown,
+      _req: express.Request,
+      res: express.Response,
+      _next: express.NextFunction
+    ) => {
+      if (error instanceof HttpError) {
+        return res.status(error.statusCode).json({
+          error: error.message,
+          code: error.code
+        });
+      }
+
+      const message = error instanceof Error ? error.message : 'Unexpected server error';
+
+      return res.status(500).json({
+        error: message
+      });
+    }
+  );
+
+  return app;
+}
