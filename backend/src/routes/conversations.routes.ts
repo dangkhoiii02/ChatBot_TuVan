@@ -66,9 +66,13 @@ conversationsRouter.get(
       before: query.before
     });
 
+    const items = extractItems(raw)
+      .map((item) => normalizeMessage(item, conversationId))
+      .sort((a, b) => getTime(a.createdAt) - getTime(b.createdAt));
+
     res.json({
       conversationId,
-      items: extractItems(raw).map((item) => normalizeMessage(item, conversationId))
+      items
     });
   })
 );

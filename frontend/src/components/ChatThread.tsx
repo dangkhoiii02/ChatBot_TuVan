@@ -10,6 +10,9 @@ export interface ChatThreadProps {
   copySuccess?: boolean;
   isLoadingMessages?: boolean;
   isSendingDemo?: boolean;
+  conflictDialog?: { isOpen: boolean; pendingContent: string };
+  onResolveConflict?: (action: 'replace' | 'append' | 'cancel') => void;
+  onOpenAssistantMobile?: () => void;
 }
 
 const INTENT_MAP: Record<ConversationIntent, { label: string; badgeClass: string }> = {
@@ -39,7 +42,10 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
   onCopyDraft,
   copySuccess,
   isLoadingMessages,
-  isSendingDemo
+  isSendingDemo,
+  conflictDialog,
+  onResolveConflict,
+  onOpenAssistantMobile
 }) => {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -103,6 +109,16 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
         </div>
 
         <div className="chat-header-actions">
+          {onOpenAssistantMobile && (
+            <button
+              type="button"
+              className="btn-toggle-assistant-mobile"
+              onClick={onOpenAssistantMobile}
+              title="Mở bảng Trợ lý AI"
+            >
+              ✨ Trợ lý AI
+            </button>
+          )}
           <span className="badge-channel">Pancake Demo</span>
         </div>
       </header>
@@ -162,6 +178,42 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
 
       {/* Input / Composer Area */}
       <div className="chat-composer-area">
+        {/* Banner xung đột bản nháp đã sửa tay */}
+        {conflictDialog?.isOpen && (
+          <div className="draft-conflict-banner">
+            <div className="conflict-prompt">
+              <span className="conflict-icon">⚠️</span>
+              <div className="conflict-text">
+                <strong>Bản nháp đã có nội dung sửa tay:</strong>
+                <span>Bạn muốn áp dụng câu gợi ý mới như thế nào?</span>
+              </div>
+            </div>
+            <div className="conflict-actions">
+              <button
+                type="button"
+                className="btn-conflict-action btn-replace"
+                onClick={() => onResolveConflict?.('replace')}
+              >
+                Ghi đè toàn bộ
+              </button>
+              <button
+                type="button"
+                className="btn-conflict-action btn-append"
+                onClick={() => onResolveConflict?.('append')}
+              >
+                Chèn thêm vào cuối
+              </button>
+              <button
+                type="button"
+                className="btn-conflict-action btn-cancel"
+                onClick={() => onResolveConflict?.('cancel')}
+              >
+                Hủy
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="composer-wrapper">
           <textarea
             className="composer-textarea"

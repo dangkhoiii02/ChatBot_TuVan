@@ -7,12 +7,17 @@ import {
   ChatMessage,
   Conversation,
   ConversationIntent,
-  PancakePage
+  CustomField,
+  PancakePage,
+  PronounPair,
+  AssignmentReviewOption,
+  MemoryItem
 } from './types';
 import { ConversationSidebar } from './components/ConversationSidebar';
 import { ChatThread } from './components/ChatThread';
 import { SuggestionPanel } from './components/SuggestionPanel';
 import { PageSelector } from './components/PageSelector';
+import { mockConversations, demoPages } from './mock/conversations';
 import {
   createSuggestions,
   getConversationMessages,
@@ -26,25 +31,64 @@ const CONVERSATION_LIMIT = 30;
 const MESSAGE_LIMIT = 30;
 
 export const App: React.FC = () => {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [selectedId, setSelectedId] = useState<string>('');
+  // Initialize with rich mock conversations for immediate usability
+  const [conversations, setConversations] = useState<Conversation[]>(mockConversations);
+  const [selectedId, setSelectedId] = useState<string>('conv-1');
   const [draftMessage, setDraftMessage] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [copySuccess, setCopySuccess] = useState<boolean>(false);
   const [health, setHealth] = useState<BackendHealth | null>(null);
   const [pages, setPages] = useState<PancakePage[]>([]);
   const [selectedPageIds, setSelectedPageIds] = useState<string[]>([]);
-  const [isLoadingPages, setIsLoadingPages] = useState<boolean>(true);
-  const [isLoadingConversations, setIsLoadingConversations] = useState<boolean>(true);
+  const [isLoadingPages, setIsLoadingPages] = useState<boolean>(false);
+  const [isLoadingConversations, setIsLoadingConversations] = useState<boolean>(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState<boolean>(false);
   const [isSendingDemo, setIsSendingDemo] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [isMockMode, setIsMockMode] = useState<boolean>(true);
   const hasLoadedPagesRef = useRef(false);
+
+  // New states for Assistant features
+  const [currentPronouns, setCurrentPronouns] = useState<PronounPair>({
+    recipientCall: 'Em',
+    senderCall: 'Thầy',
+    label: 'Thầy — Em'
+  });
+
+  const [conflictDialog, setConflictDialog] = useState<{
+    isOpen: boolean;
+    pendingContent: string;
+  }>({
+    isOpen: false,
+    pendingContent: ''
+  });
+
+  const [mobileView, setMobileView] = useState<'conversations' | 'chat' | 'assistant'>('chat');
 
   const selectedConversation = useMemo(
     () => conversations.find((c) => c.id === selectedId),
     [conversations, selectedId]
   );
+
+  // Synchronize pronouns when switching conversation
+  useEffect(() => {
+    if (!selectedConversation) return;
+    if (selectedConversation.profile?.recipientCall && selectedConversation.profile?.senderCall) {
+      const r = selectedConversation.profile.recipientCall;
+      const s = selectedConversation.profile.senderCall;
+      setCurrentPronouns({
+        recipientCall: r,
+        senderCall: s,
+        label: `${s} — ${r}`
+      });
+    } else if (selectedConversation.studentName.toLowerCase().startsWith('chị')) {
+      setCurrentPronouns({ recipientCall: 'Chị', senderCall: 'Em', label: 'Em — Chị' });
+    } else if (selectedConversation.studentName.toLowerCase().startsWith('anh')) {
+      setCurrentPronouns({ recipientCall: 'Anh', senderCall: 'Thầy', label: 'Thầy — Anh' });
+    } else {
+      setCurrentPronouns({ recipientCall: 'Em', senderCall: 'Thầy', label: 'Thầy — Em' });
+    }
+  }, [selectedConversation?.id]);
 
   const pageNameById = useMemo(
     () => new Map(pages.map((page) => [page.id, page.name])),
@@ -52,10 +96,21 @@ export const App: React.FC = () => {
   );
 
   const refreshConversations = useCallback(async () => {
+    if (!selectedPageIds.length) return;
+
     setIsLoadingConversations(true);
     setErrorMessage('');
 
     try {
+      if (isMockMode) {
+        setConversations(mockConversations);
+        setSelectedId((currentId) => {
+          if (currentId && mockConversations.some((item) => item.id === currentId)) return currentId;
+          return mockConversations[0]?.id || '';
+        });
+        return;
+      }
+
       if (!selectedPageIds.length) {
         setConversations([]);
         setSelectedId('');
@@ -63,46 +118,83 @@ export const App: React.FC = () => {
       }
 
       const items = await getConversations(selectedPageIds, CONVERSATION_LIMIT);
-      const mapped = items.map((item) => mapConversationSummary(item, pageNameById));
+      if (items && items.length > 0) {
+        const mapped = items.map((item) => mapConversationSummary(item, pageNameById));
 
-      setConversations((current) => {
-        const currentById = new Map(current.map((item) => [item.id, item]));
+        setConversations((current) => {
+          const currentById = new Map(current.map((item) => [item.id, item]));
 
-        return mapped.map((item) => {
-          const existing = currentById.get(item.id);
-          return {
-            ...item,
-            intent: existing?.intent && existing.intent !== 'unknown' ? existing.intent : item.intent,
-            messages: existing?.messages || [],
-            suggestions: existing?.suggestions || [],
-            flagReason: existing?.flagReason || item.flagReason,
-            aiAnalysis: existing?.aiAnalysis || item.aiAnalysis,
-            aiProvider: existing?.aiProvider || item.aiProvider,
-            isDemoFallback: existing?.isDemoFallback || item.isDemoFallback
-          };
+          return mapped.map((item) => {
+            const existing = currentById.get(item.id);
+            return {
+              ...item,
+              intent: existing?.intent && existing.intent !== 'unknown' ? existing.intent : item.intent,
+              messages: existing?.messages && existing.messages.length > 0 ? existing.messages : item.messages,
+              suggestions: existing?.suggestions && existing.suggestions.length > 0 ? existing.suggestions : item.suggestions,
+              flagReason: existing?.flagReason || item.flagReason,
+              aiAnalysis: existing?.aiAnalysis || item.aiAnalysis,
+              aiProvider: existing?.aiProvider || item.aiProvider,
+              isDemoFallback: existing?.isDemoFallback || item.isDemoFallback,
+              profile: existing?.profile || item.profile,
+              memories: existing?.memories || item.memories,
+              assignmentOptions: existing?.assignmentOptions || item.assignmentOptions
+            };
+          });
         });
-      });
 
-      setSelectedId((currentId) => {
-        if (currentId && mapped.some((item) => item.id === currentId)) return currentId;
-        return mapped[0]?.id || '';
-      });
+        setSelectedId((currentId) => {
+          if (currentId && mapped.some((item) => item.id === currentId)) return currentId;
+          return mapped[0]?.id || '';
+        });
+      }
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
+      // Tự động chuyển sang Chế độ Mock Test khi gọi API thất bại
+      setIsMockMode(true);
+      setPages(demoPages);
+      setSelectedPageIds(['demo-page']);
+      setConversations(mockConversations);
+      setSelectedId(mockConversations[0]?.id || '');
+      // Keep mock conversations on API error so UI remains fully functional
+      console.warn('Backend conversations unavailable, using mock data:', error);
     } finally {
       setIsLoadingConversations(false);
     }
-  }, [pageNameById, selectedPageIds]);
+  }, [isMockMode, pageNameById, selectedPageIds]);
+
+  const toggleMockMode = useCallback(() => {
+    setIsMockMode((prev) => {
+      const next = !prev;
+      if (next) {
+        setPages(demoPages);
+        setSelectedPageIds(['demo-page']);
+        setConversations(mockConversations);
+        setSelectedId(mockConversations[0]?.id || '');
+      } else {
+        refreshConversations();
+      }
+      return next;
+    });
+  }, [refreshConversations]);
 
   useEffect(() => {
     getHealth()
       .then(setHealth)
-      .catch((error) => setErrorMessage(getErrorMessage(error)));
-
+      .catch((error) => {
+        setErrorMessage(getErrorMessage(error));
+        // Fallback health state for offline/demo
+        setHealth({
+          ok: true,
+          service: 'frontend-demo',
+          pancakeConfigured: false,
+          pancakeAuthMode: 'missing',
+          aiProvider: 'Mock Assistant Thầy Minh'
+        });
+      });
   }, []);
 
   useEffect(() => {
-    if (hasLoadedPagesRef.current) return;
+    if (hasLoadedPagesRef.current || isMockMode) return;
     hasLoadedPagesRef.current = true;
 
     let isCurrent = true;
@@ -124,7 +216,16 @@ export const App: React.FC = () => {
         );
       })
       .catch((error) => {
-        if (isCurrent) setErrorMessage(getErrorMessage(error));
+        // Provide demo page if backend is offline
+        if (isCurrent) {
+          setErrorMessage(getErrorMessage(error));
+          // Auto fallback sang demoPages và mockConversations khi getPages lỗi
+          setIsMockMode(true);
+          setPages(demoPages);
+          setSelectedPageIds(['demo-page']);
+          setConversations(mockConversations);
+          setSelectedId(mockConversations[0]?.id || '');
+        }
       })
       .finally(() => {
         if (isCurrent) setIsLoadingPages(false);
@@ -133,14 +234,14 @@ export const App: React.FC = () => {
     return () => {
       isCurrent = false;
     };
-  }, []);
+  }, [isMockMode]);
 
   useEffect(() => {
     refreshConversations();
   }, [refreshConversations]);
 
   useEffect(() => {
-    if (!selectedId || !selectedConversation?.pageId) return;
+    if (!selectedId || !selectedConversation?.pageId || isMockMode || selectedConversation.pageId === 'demo-page') return;
 
     let isCurrent = true;
     setIsLoadingMessages(true);
@@ -149,7 +250,11 @@ export const App: React.FC = () => {
     getConversationMessages(selectedId, selectedConversation.pageId, MESSAGE_LIMIT)
       .then((items) => {
         if (!isCurrent) return;
-        const messages = items.slice().reverse().map(mapChatMessage);
+        const messages = items
+          .map(mapChatMessage)
+          .sort((a, b) => {
+            return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+          });
 
         setConversations((current) =>
           current.map((conversation) =>
@@ -186,6 +291,7 @@ export const App: React.FC = () => {
     setSelectedId(id);
     setCopySuccess(false);
     setDraftMessage('');
+    setMobileView('chat');
 
     setConversations((prev) =>
       prev.map((c) => (c.id === id && c.unreadCount > 0 ? { ...c, unreadCount: 0 } : c))
@@ -199,18 +305,31 @@ export const App: React.FC = () => {
     setErrorMessage('');
 
     try {
-      const savedReply = await saveDemoReply({
-        conversationId: selectedConversation.id,
-        content: draftMessage.trim()
-      });
+      let newMsg: ChatMessage;
 
-      const newMsg: ChatMessage = {
-        id: savedReply.id,
-        sender: 'staff',
-        text: savedReply.content,
-        sentAt: `${formatTimestamp(savedReply.createdAt)} (Demo)`,
-        createdAt: savedReply.createdAt
-      };
+      if (selectedConversation.pageId === 'demo-page' || !health?.pancakeConfigured) {
+        // Local demo mode: generate instant local reply
+        newMsg = {
+          id: `msg-demo-${Date.now()}`,
+          sender: 'staff',
+          text: draftMessage.trim(),
+          sentAt: `${formatTimestamp(new Date().toISOString())} (Demo)`,
+          createdAt: new Date().toISOString()
+        };
+      } else {
+        const savedReply = await saveDemoReply({
+          conversationId: selectedConversation.id,
+          content: draftMessage.trim()
+        });
+
+        newMsg = {
+          id: savedReply.id,
+          sender: 'staff',
+          text: savedReply.content,
+          sentAt: `${formatTimestamp(savedReply.createdAt)} (Demo)`,
+          createdAt: savedReply.createdAt
+        };
+      }
 
       setConversations((prev) =>
         prev.map((conv) => {
@@ -233,7 +352,7 @@ export const App: React.FC = () => {
     } finally {
       setIsSendingDemo(false);
     }
-  }, [draftMessage, isSendingDemo, selectedConversation]);
+  }, [draftMessage, health?.pancakeConfigured, isSendingDemo, selectedConversation]);
 
   const handleCopyDraft = useCallback(() => {
     if (!draftMessage.trim()) return;
@@ -253,10 +372,220 @@ export const App: React.FC = () => {
     }
   }, [draftMessage]);
 
+  // Handle applying a suggestion with draft conflict detection
   const handleUseSuggestion = useCallback((content: string) => {
-    setDraftMessage(content);
+    const trimmedDraft = draftMessage.trim();
+    if (!trimmedDraft) {
+      setDraftMessage(content);
+      setCopySuccess(false);
+      setMobileView('chat');
+      return;
+    }
+
+    if (trimmedDraft === content.trim()) {
+      setMobileView('chat');
+      return;
+    }
+
+    // Conflict: user already typed text in draft
+    setConflictDialog({
+      isOpen: true,
+      pendingContent: content
+    });
+    setMobileView('chat');
+  }, [draftMessage]);
+
+  const handleResolveConflict = useCallback((action: 'replace' | 'append' | 'cancel') => {
+    if (action === 'replace') {
+      setDraftMessage(conflictDialog.pendingContent);
+    } else if (action === 'append') {
+      setDraftMessage((prev) => `${prev.trim()}\n\n${conflictDialog.pendingContent}`);
+    }
+    setConflictDialog({ isOpen: false, pendingContent: '' });
     setCopySuccess(false);
-  }, []);
+  }, [conflictDialog]);
+
+  // Quick Pronoun Changing with Instant Suggestion Adaptation
+  const handleChangePronouns = useCallback((newPair: PronounPair) => {
+    const oldPair = currentPronouns;
+    setCurrentPronouns(newPair);
+
+    if (!selectedConversation) return;
+
+    const adaptText = (text: string) => {
+      let result = text;
+      if (oldPair.senderCall !== newPair.senderCall && oldPair.senderCall) {
+        result = result.split(oldPair.senderCall).join(newPair.senderCall);
+      }
+      if (oldPair.recipientCall !== newPair.recipientCall && oldPair.recipientCall) {
+        result = result.split(oldPair.recipientCall).join(newPair.recipientCall);
+        result = result.split(oldPair.recipientCall.toLowerCase()).join(newPair.recipientCall.toLowerCase());
+      }
+      return result;
+    };
+
+    setConversations((prev) =>
+      prev.map((c) => {
+        if (c.id === selectedConversation.id) {
+          const updatedSuggestions = (c.suggestions || []).map((s) => ({
+            ...s,
+            content: adaptText(s.content)
+          }));
+          const updatedAssignmentOptions = (c.assignmentOptions || []).map((o) => ({
+            ...o,
+            content: adaptText(o.content)
+          }));
+          const updatedProfile = c.profile
+            ? {
+                ...c.profile,
+                recipientCall: newPair.recipientCall,
+                senderCall: newPair.senderCall,
+                fields: c.profile.fields.map((f) => {
+                  if (f.key === 'sender') return { ...f, value: newPair.senderCall };
+                  if (f.key === 'recipient') return { ...f, value: `${newPair.recipientCall} ${c.studentName.replace(/^(Em|Chị|Anh|Bạn)\s*/i, '')}` };
+                  return f;
+                })
+              }
+            : undefined;
+
+          return {
+            ...c,
+            suggestions: updatedSuggestions,
+            assignmentOptions: updatedAssignmentOptions,
+            profile: updatedProfile
+          };
+        }
+        return c;
+      })
+    );
+  }, [currentPronouns, selectedConversation]);
+
+  // Fast Pedagogical Assignment Review Generator
+  const handleGradeAssignment = useCallback((reviewText: string) => {
+    if (!selectedConversation) return;
+    const s = currentPronouns.senderCall;
+    const r = currentPronouns.recipientCall;
+
+    const generatedOptions: AssignmentReviewOption[] = [
+      {
+        id: `asg_${Date.now()}_1`,
+        tone: 'Sư phạm & Kỹ thuật',
+        content: `${s} xem clip và nhận thấy nè ${r}! ${reviewText}. ${r} tập trung thả lỏng cổ tay và tập chậm lại từng ô nhịp nhé!`,
+        usedFacts: ['Lỗi kỹ thuật', 'Thả lỏng cổ tay', 'Tập chậm']
+      },
+      {
+        id: `asg_${Date.now()}_2`,
+        tone: 'Nhẹ nhàng & Khích lệ',
+        content: `Tiếng đàn tuần này của ${r} tiến bộ hơn rồi nè! Chỉ cần lưu ý thêm: ${reviewText}. Cố lên nghen ${r} ơi, sắp thành thạo bài rồi nè 🥰`,
+        usedFacts: ['Tiếng đàn tiến bộ', 'Khích lệ tập luyện']
+      },
+      {
+        id: `asg_${Date.now()}_3`,
+        tone: 'Ngắn gọn & Trọng tâm',
+        content: `${r} tập trung chỉnh sửa: ${reviewText}. Giữ tempo 50 và lặp lại 5-7 lượt mỗi ngày nha.`,
+        usedFacts: ['Trọng tâm chỉnh sửa', 'Tempo 50']
+      }
+    ];
+
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === selectedConversation.id
+          ? {
+              ...c,
+              assignmentOptions: generatedOptions
+            }
+          : c
+      )
+    );
+  }, [currentPronouns, selectedConversation]);
+
+  // Add Custom Field to Student Profile
+  const handleAddCustomField = useCallback((field: Omit<CustomField, 'id' | 'source'>) => {
+    if (!selectedConversation) return;
+    const newField: CustomField = {
+      ...field,
+      id: `cf_${Date.now()}`,
+      source: 'user_input'
+    };
+
+    setConversations((prev) =>
+      prev.map((c) => {
+        if (c.id === selectedConversation.id) {
+          const currentProfile = c.profile || {
+            recipientCall: currentPronouns.recipientCall,
+            senderCall: currentPronouns.senderCall,
+            nextAction: 'Chờ phản hồi từ học viên',
+            specialNotes: '',
+            studyNotes: '',
+            dataStatus: 'saved',
+            fields: [],
+            customFields: []
+          };
+          return {
+            ...c,
+            profile: {
+              ...currentProfile,
+              customFields: [...(currentProfile.customFields || []), newField]
+            }
+          };
+        }
+        return c;
+      })
+    );
+  }, [currentPronouns, selectedConversation]);
+
+  // Accept AI Suggested Field in Profile
+  const handleAcceptAiProfileSuggestion = useCallback((fieldKey: string, newValue: string) => {
+    if (!selectedConversation) return;
+
+    setConversations((prev) =>
+      prev.map((c) => {
+        if (c.id === selectedConversation.id && c.profile) {
+          const updatedFields = c.profile.fields.map((f) =>
+            f.key === fieldKey
+              ? { ...f, value: newValue, source: 'confirmed' as const, aiSuggestion: undefined, conflictReason: undefined }
+              : f
+          );
+          const hasConflict = updatedFields.some((f) => f.source === 'conflict');
+          return {
+            ...c,
+            profile: {
+              ...c.profile,
+              fields: updatedFields,
+              dataStatus: hasConflict ? ('conflict' as const) : ('saved' as const)
+            }
+          };
+        }
+        return c;
+      })
+    );
+  }, [selectedConversation]);
+
+  // Save new memory item or apply suggested memory
+  const handleSaveMemory = useCallback((content: string, reason?: string) => {
+    if (!selectedConversation) return;
+
+    const newMem: MemoryItem = {
+      id: `mem_${Date.now()}`,
+      content,
+      status: 'active',
+      reason,
+      createdAt: 'Vừa xong'
+    };
+
+    setConversations((prev) =>
+      prev.map((c) => {
+        if (c.id === selectedConversation.id) {
+          const existing = (c.memories || []).filter((m) => m.content !== content);
+          return {
+            ...c,
+            memories: [newMem, ...existing]
+          };
+        }
+        return c;
+      })
+    );
+  }, [selectedConversation]);
 
   const handleGenerateSuggestions = useCallback(async () => {
     if (!selectedConversation || isGenerating) return;
@@ -265,6 +594,63 @@ export const App: React.FC = () => {
     setErrorMessage('');
 
     try {
+      if (isMockMode || selectedConversation.pageId === 'demo-page' || !health?.pancakeConfigured) {
+        const mockItem = mockConversations.find((c) => c.id === selectedConversation.id);
+        if (mockItem && mockItem.suggestions.length > 0) {
+          setConversations((current) =>
+            current.map((conversation) =>
+              conversation.id === selectedConversation.id
+                ? {
+                    ...conversation,
+                    intent: mockItem.intent,
+                    flagReason: mockItem.flagReason || conversation.flagReason,
+                    suggestions: mockItem.suggestions,
+                    aiProvider: 'mock',
+                    isDemoFallback: true
+                  }
+                : conversation
+            )
+          );
+          return;
+        }
+
+        // Quick local generator nếu không có mock item
+        await new Promise((res) => setTimeout(res, 400));
+        setConversations((current) =>
+          current.map((c) =>
+            c.id === selectedConversation.id
+              ? {
+                  ...c,
+                  suggestions: [
+                    {
+                      id: `sug_${Date.now()}_1`,
+                      tone: 'Nhẹ nhàng & Tình cảm',
+                      sensitivity: c.intent === 'sensitive' ? 'do' : 'xanh',
+                      content: `Dạ ${currentPronouns.senderCall} chào ${currentPronouns.recipientCall}! ${currentPronouns.senderCall} có xem qua tin nhắn rồi nè, ${currentPronouns.recipientCall} cứ yên tâm nha, bài học lớp mình luôn đồng hành cùng ${currentPronouns.recipientCall} ^^`,
+                      usedFacts: ['Đồng hành bài học', 'Thấu hiểu học viên']
+                    },
+                    {
+                      id: `sug_${Date.now()}_2`,
+                      tone: 'Rõ việc cần làm',
+                      sensitivity: c.intent === 'sensitive' ? 'do' : 'xanh',
+                      content: `${currentPronouns.recipientCall} ơi, việc quan trọng nhất là ${c.profile?.nextAction || 'chăm sóc sức khỏe và luyện ngón đều tay'}. ${currentPronouns.recipientCall} nhắn lại cho ${currentPronouns.senderCall} sớm nhé!`,
+                      usedFacts: ['Việc cần làm tiếp', 'Phản hồi sớm']
+                    },
+                    {
+                      id: `sug_${Date.now()}_3`,
+                      tone: 'Thân mật & Khích lệ',
+                      sensitivity: c.intent === 'sensitive' ? 'do' : 'xanh',
+                      content: `${currentPronouns.recipientCall} cố lên nghen! Dù bận hay khó khăn gì thì chỉ cần 10-15 phút rảnh là lướt ngón xả stress được rồi nè 🥰`,
+                      usedFacts: ['10-15 phút xả stress']
+                    }
+                  ]
+                }
+              : c
+          )
+        );
+        return;
+      }
+
       const result = await createSuggestions({
         conversationId: selectedConversation.id,
         messages: selectedConversation.messages
@@ -294,10 +680,30 @@ export const App: React.FC = () => {
       );
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
+      // Khi API gợi ý lỗi thì fallback sang gợi ý mock của học viên
+      const mockItem = mockConversations.find((c) => c.id === selectedConversation.id);
+      if (mockItem && mockItem.suggestions.length > 0) {
+        setConversations((current) =>
+          current.map((conversation) =>
+            conversation.id === selectedConversation.id
+              ? {
+                  ...conversation,
+                  intent: mockItem.intent,
+                  flagReason: mockItem.flagReason || conversation.flagReason,
+                  suggestions: mockItem.suggestions,
+                  aiProvider: 'mock (offline)',
+                  isDemoFallback: true
+                }
+              : conversation
+          )
+        );
+      } else {
+        setErrorMessage(getErrorMessage(error));
+      }
     } finally {
       setIsGenerating(false);
     }
-  }, [isGenerating, selectedConversation]);
+  }, [currentPronouns, health?.pancakeConfigured, isGenerating, selectedConversation]);
 
   return (
     <div className="app-container">
@@ -320,42 +726,106 @@ export const App: React.FC = () => {
           <span className="badge-status-pill badge-active">
             <span className="dot-green" /> API Demo
           </span>
-          <span className="badge-status-pill">{conversations.length} hội thoại Pancake</span>
+          <button
+            type="button"
+            className={`btn-mode-toggle ${isMockMode ? 'btn-mock-active' : ''}`}
+            onClick={toggleMockMode}
+            title={isMockMode ? 'Bấm để thử chuyển sang Live API' : 'Bấm để chuyển sang Chế độ Mock Test'}
+          >
+            <span className={`dot-status ${isMockMode ? 'dot-amber' : 'dot-green'}`} />
+            {isMockMode ? 'Chế độ: Mock Test (6 học viên)' : 'Chế độ: Live API'}
+          </button>
+          <span className="badge-status-pill">{conversations.length} hội thoại</span>
           {health && <span className="badge-status-pill">AI: {health.aiProvider}</span>}
           {errorMessage && <span className="badge-status-pill badge-error">Lỗi: {errorMessage}</span>}
         </div>
       </header>
 
-      <div className="app-main-layout">
-        <ConversationSidebar
-          conversations={conversations}
-          selectedId={selectedId}
-          onSelect={handleSelectConversation}
-          onRefresh={refreshConversations}
-          isLoading={isLoadingConversations}
-          errorMessage={errorMessage}
-          showPageName={selectedPageIds.length > 1}
-        />
+      <div className={`app-main-layout mobile-view-${mobileView}`}>
+        {/* CỘT 1: DANH SÁCH HỘI THOẠI */}
+        <div className={`layout-col col-sidebar ${mobileView === 'conversations' ? 'mobile-active' : ''}`}>
+          <ConversationSidebar
+            conversations={conversations}
+            selectedId={selectedId}
+            onSelect={handleSelectConversation}
+            onRefresh={refreshConversations}
+            isLoading={isLoadingConversations}
+            errorMessage={errorMessage}
+            showPageName={selectedPageIds.length > 1}
+          />
+        </div>
 
-        <ChatThread
-          conversation={selectedConversation}
-          draftMessage={draftMessage}
-          onDraftChange={setDraftMessage}
-          onSendDemo={handleSendDemo}
-          onCopyDraft={handleCopyDraft}
-          copySuccess={copySuccess}
-          isLoadingMessages={isLoadingMessages}
-          isSendingDemo={isSendingDemo}
-        />
+        {/* CỘT 2: LUỒNG CHAT & KHUNG SOẠN */}
+        <div className={`layout-col col-chat ${mobileView === 'chat' ? 'mobile-active' : ''}`}>
+          <ChatThread
+            conversation={selectedConversation}
+            draftMessage={draftMessage}
+            onDraftChange={setDraftMessage}
+            onSendDemo={handleSendDemo}
+            onCopyDraft={handleCopyDraft}
+            copySuccess={copySuccess}
+            isLoadingMessages={isLoadingMessages}
+            isSendingDemo={isSendingDemo}
+            conflictDialog={conflictDialog}
+            onResolveConflict={handleResolveConflict}
+            onOpenAssistantMobile={() => setMobileView('assistant')}
+          />
+        </div>
 
-        <SuggestionPanel
-          conversation={selectedConversation}
-          suggestions={selectedConversation?.suggestions || []}
-          isGenerating={isGenerating}
-          onGenerate={handleGenerateSuggestions}
-          onUseSuggestion={handleUseSuggestion}
-        />
+        {/* CỘT 3: BẢNG TRỢ LÝ AI (4 TABS) */}
+        <div className={`layout-col col-assistant ${mobileView === 'assistant' ? 'mobile-active' : ''}`}>
+          <SuggestionPanel
+            conversation={selectedConversation}
+            suggestions={selectedConversation?.suggestions || []}
+            isGenerating={isGenerating}
+            onGenerate={handleGenerateSuggestions}
+            onUseSuggestion={handleUseSuggestion}
+            currentPronoun={currentPronouns}
+            onChangePronouns={handleChangePronouns}
+            onGradeAssignment={handleGradeAssignment}
+            onAddCustomField={handleAddCustomField}
+            onAcceptAiProfileSuggestion={handleAcceptAiProfileSuggestion}
+            onSaveMemory={handleSaveMemory}
+            onCloseMobile={() => setMobileView('chat')}
+          />
+        </div>
       </div>
+
+      {/* THANH ĐIỀU HƯỚNG MOBILE BOTTOM BAR (chỉ hiển thị trên mobile/tablet nhỏ) */}
+      <nav className="mobile-bottom-nav">
+        <button
+          type="button"
+          className={`mobile-nav-item ${mobileView === 'conversations' ? 'active' : ''}`}
+          onClick={() => setMobileView('conversations')}
+        >
+          <span className="nav-icon">👥</span>
+          <span className="nav-label">Học viên</span>
+          {conversations.some((c) => c.unreadCount > 0) && (
+            <span className="nav-unread-dot" />
+          )}
+        </button>
+
+        <button
+          type="button"
+          className={`mobile-nav-item ${mobileView === 'chat' ? 'active' : ''}`}
+          onClick={() => setMobileView('chat')}
+        >
+          <span className="nav-icon">💬</span>
+          <span className="nav-label">Tin nhắn</span>
+        </button>
+
+        <button
+          type="button"
+          className={`mobile-nav-item ${mobileView === 'assistant' ? 'active' : ''}`}
+          onClick={() => setMobileView('assistant')}
+        >
+          <span className="nav-icon">🤖</span>
+          <span className="nav-label">Trợ lý AI</span>
+          {selectedConversation?.profile?.dataStatus === 'conflict' && (
+            <span className="nav-alert-dot" />
+          )}
+        </button>
+      </nav>
     </div>
   );
 };
