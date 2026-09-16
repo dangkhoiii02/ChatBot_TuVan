@@ -1,0 +1,30 @@
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# SQLite database files & WAL/SHM
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+storage/*.db
+storage/*.db-wal
+storage/*.db-shm
+
+# Backup and restore directories
+backups/
+restore_test/
+
+# Logs and temp files
+*.log
+logs/
+tmp/
+temp/
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Dependencies
+node_modules/

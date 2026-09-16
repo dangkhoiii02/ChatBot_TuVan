@@ -1,0 +1,26 @@
+services:
+  chatbot:
+    build: .
+    container_name: chatbot_thay_minh
+    restart: unless-stopped
+    ports:
+      # RÀNG BUỘC LOOPBACK: Chỉ lắng nghe trên 127.0.0.1 để bảo vệ mạng nội bộ
+      - "127.0.0.1:3000:3000"
+    environment:
+      - NODE_ENV=production
+      - HOST=0.0.0.0
+      - PORT=3000
+      - DATABASE_PATH=/app/storage/app.db
+      - PROVIDER=mock
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - CONCURRENCY_LIMIT=3
+      - ALLOWED_ORIGINS=http://127.0.0.1:3000,http://localhost:3000
+    volumes:
+      # Persistent storage volume for SQLite DB and online backups
+      - chatbot_data:/app/storage
+      - chatbot_backups:/app/backups
+
+volumes:
+  chatbot_data:
+  chatbot_backups:

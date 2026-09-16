@@ -1,21 +1,41 @@
-// MINH PIANO STUDIO — SENIOR FRONT-END CLIENT ENGINE
+// MINH PIANO STUDIO — CLIENT WIDGET ENGINE (API v1)
 
 document.addEventListener('DOMContentLoaded', () => {
-  // --- STATE ---
-  let samplesCache = [];
+  // 1. Clean legacy storage keys safely without logging values
+  try {
+    localStorage.removeItem('gemini_api_key');
+    localStorage.removeItem('gemini_model');
+  } catch (e) {}
+
+  // 2. Pre-defined test situations
+  const SAMPLE_SCENARIOS = {
+    red: {
+      message: 'Dạ thầy ơi, em vừa nhận kết quả xét nghiệm từ bệnh viện Ung Bướu, bác sĩ báo em có khối u ác tính phải nhập viện xạ trị gấp tuần sau. Chắc em không thể tiếp tục theo học đàn cùng thầy được nữa rồi, buồn quá thầy ơi...',
+      context: { pronoun: 'thầy - em', audience: 'Học viên thanh niên', current_issue: 'Ung thư / Xạ trị', current_prescription: '' }
+    },
+    fingering: {
+      message: 'Thầy ơi đoạn chuyển ngón tay từ phím trắng sang phím đen ở câu 2 em hay bị vấp với cứng khớp ngón 4-5 quá, thầy chỉ giúp em cách xếp ngón với ạ!',
+      context: { pronoun: 'thầy - em', audience: 'Học viên trẻ', current_issue: 'Vướng phím đen ngón 4-5', current_prescription: 'Tập bài ngón lặp lại' }
+    },
+    reservation: {
+      message: 'Thầy ơi tuần tới công ty em cử đi công tác nước ngoài 2 tháng, em muốn xin bảo lưu khóa học 20 tuần này thì có được không và thủ tục như thế nào ạ?',
+      context: { pronoun: 'thầy - em', audience: 'Người đi làm', current_issue: 'Xin bảo lưu công tác', current_prescription: '' }
+    },
+    motivation: {
+      message: 'Dạo này việc công ty nhiều quá nên tối về em mệt không tập được đàn phút nào hết thầy ơi, em thấy nản quá...',
+      context: { pronoun: 'thầy - em', audience: 'Người đi làm', current_issue: 'Bận rộn, mất động lực', current_prescription: '15 phút mỗi ngày' }
+    }
+  };
+
+  // State
   let currentReplies = [];
   let selectedReplyIdx = 0;
-  let cachedDocs = {};
-  let currentDocFile = 'persona.md';
+  let activeJobId = null;
+  let activeJobToken = null;
+  let pollTimer = null;
+  let pollStartTime = 0;
 
-  // --- DOM NODES ---
-  // Masthead & Drawer
-  const openSettingsDrawerBtn = document.getElementById('openSettingsDrawerBtn');
-  const closeDrawerBtn = document.getElementById('closeDrawerBtn');
-  const drawerBackdrop = document.getElementById('drawerBackdrop');
-  const headerKeyStatusDot = document.getElementById('headerKeyStatusDot');
-
-  // Composer Nodes
+  // DOM Elements
   const studentMessageInput = document.getElementById('studentMessageInput');
   const samplesPills = document.getElementById('samplesPills');
   const toggleContextBtn = document.getElementById('toggleContextBtn');
@@ -29,7 +49,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const loadingSpinner = document.getElementById('loadingSpinner');
   const generateBtnText = document.getElementById('generateBtnText');
 
-  // Results Desk Nodes
   const resultsDesk = document.getElementById('resultsDesk');
   const emptyWelcome = document.getElementById('emptyWelcome');
   const sensitivityBanner = document.getElementById('sensitivityBanner');
@@ -40,150 +59,80 @@ document.addEventListener('DOMContentLoaded', () => {
   const activeToneChip = document.getElementById('activeToneChip');
   const finalEditorTextarea = document.getElementById('finalEditorTextarea');
   const copyToClipboardBtn = document.getElementById('copyToClipboardBtn');
-  const confirmSendBtn = document.getElementById('confirmSendBtn');
+  const confirmFeedbackBtn = document.getElementById('confirmFeedbackBtn');
+  const outdatedVersionNotice = document.getElementById('outdatedVersionNotice');
+  const statusLabelText = document.getElementById('statusLabelText');
 
-  // Drawer Nodes
-  const drawerApiKeyInput = document.getElementById('drawerApiKeyInput');
-  const toggleApiKeyViewBtn = document.getElementById('toggleApiKeyViewBtn');
-  const saveApiKeyBtn = document.getElementById('saveApiKeyBtn');
-  const drawerModelSelect = document.getElementById('drawerModelSelect');
-  const keyStatusIndicator = document.getElementById('keyStatusIndicator');
-  const docTabsList = document.getElementById('docTabsList');
-  const drawerDocEditor = document.getElementById('drawerDocEditor');
-  const docSaveIndicator = document.getElementById('docSaveIndicator');
-  const saveDocumentBtn = document.getElementById('saveDocumentBtn');
-  const historyMiniList = document.getElementById('historyMiniList');
-
-  // Toast
   const toastBubble = document.getElementById('toastBubble');
   const toastSymbol = document.getElementById('toastSymbol');
   const toastMessage = document.getElementById('toastMessage');
 
-  // --- INIT ---
-  initApiKey();
-  initSamples();
-  bindInteractions();
-
-  // --- API KEY & SETTINGS ---
-  function initApiKey() {
-    const key = localStorage.getItem('gemini_api_key') || '';
-    let model = localStorage.getItem('gemini_model') || 'gemini-3.6-flash';
-
-    if (model === 'gemini-2.0-flash' || model === 'gemini-1.5-flash') {
-      model = 'gemini-3.6-flash';
-      localStorage.setItem('gemini_model', 'gemini-3.6-flash');
-    }
-
-    drawerApiKeyInput.value = key;
-    drawerModelSelect.value = model;
-    updateKeyStatusDisplay(Boolean(key));
-
-    toggleApiKeyViewBtn.addEventListener('click', () => {
-      if (drawerApiKeyInput.type === 'password') {
-        drawerApiKeyInput.type = 'text';
-        toggleApiKeyViewBtn.textContent = 'Ẩn';
-      } else {
-        drawerApiKeyInput.type = 'password';
-        toggleApiKeyViewBtn.textContent = 'Hiện';
-      }
-    });
-
-    saveApiKeyBtn.addEventListener('click', () => {
-      const val = drawerApiKeyInput.value.trim();
-      if (val) {
-        localStorage.setItem('gemini_api_key', val);
-        updateKeyStatusDisplay(true);
-        showToast('Đã lưu Gemini API Key!', '✓');
-      } else {
-        localStorage.removeItem('gemini_api_key');
-        updateKeyStatusDisplay(false);
-        showToast('Đã gỡ bỏ API Key.', 'ℹ');
-      }
-    });
-
-    drawerModelSelect.addEventListener('change', () => {
-      localStorage.setItem('gemini_model', drawerModelSelect.value);
-      showToast(`Mô hình: ${drawerModelSelect.value}`, '✓');
-    });
+  // Helper: Secure Random Hex
+  function generateRandomHex(length = 24) {
+    const arr = new Uint8Array(length);
+    crypto.getRandomValues(arr);
+    return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
-  function updateKeyStatusDisplay(hasKey) {
-    if (hasKey) {
-      headerKeyStatusDot.classList.add('active');
-      keyStatusIndicator.className = 'key-status-indicator ready';
-      keyStatusIndicator.textContent = '✓ Sẵn sàng';
-    } else {
-      headerKeyStatusDot.classList.remove('active');
-      keyStatusIndicator.className = 'key-status-indicator';
-      keyStatusIndicator.textContent = 'Chưa có Key';
-    }
+  // Helper: Escape HTML
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 
-  function getApiKey() {
-    return drawerApiKeyInput.value.trim() || localStorage.getItem('gemini_api_key') || '';
-  }
+  // Init Health Check
+  checkServerHealth();
 
-  function getModel() {
-    return drawerModelSelect.value || localStorage.getItem('gemini_model') || 'gemini-3.6-flash';
-  }
+  // Restore Session If Available
+  restoreSession();
 
-  // --- SAMPLES ---
-  async function initSamples() {
+  // Bind Events
+  bindEvents();
+
+  async function checkServerHealth() {
     try {
-      const res = await fetch('/api/samples');
-      const data = await res.json();
-      if (data.success && data.samples) {
-        samplesCache = data.samples;
+      const res = await fetch('/api/v1/health/ready');
+      if (res.ok) {
+        statusLabelText.textContent = 'Hệ thống sẵn sàng';
+      } else {
+        const data = await res.json().catch(() => ({}));
+        statusLabelText.textContent = data.error || 'Đang bảo trì tri thức';
       }
     } catch (e) {
-      console.warn('Samples load note:', e);
+      statusLabelText.textContent = 'Mất kết nối máy chủ';
     }
-
-    document.querySelectorAll('.sample-pill').forEach(pill => {
-      pill.addEventListener('click', () => {
-        const id = pill.dataset.sampleId;
-        const s = samplesCache.find(item => item.id === id);
-        if (!s) return;
-
-        studentMessageInput.value = s.input_message || '';
-        
-        if (s.context) {
-          if (s.context.pronoun) ctxPronoun.value = s.context.pronoun;
-          if (s.context.audience) ctxAudience.value = s.context.audience;
-          if (s.context.topic) ctxCurrentIssue.value = s.context.topic;
-        }
-
-        showToast(`Đã nạp mẫu: ${s.student_name || s.title || ''}`, '♩');
-      });
-    });
   }
 
-  // --- INTERACTIONS & GENERATE ---
-  function bindInteractions() {
-    // Drawer open/close
-    openSettingsDrawerBtn.addEventListener('click', () => {
-      drawerBackdrop.classList.remove('hidden');
-      loadDrawerDocuments();
-      loadDrawerHistory();
+  function bindEvents() {
+    // Sample clicks
+    samplesPills.querySelectorAll('.sample-pill').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.dataset.sample;
+        const sample = SAMPLE_SCENARIOS[key];
+        if (!sample) return;
+
+        studentMessageInput.value = sample.message;
+        if (sample.context.pronoun) ctxPronoun.value = sample.context.pronoun;
+        if (sample.context.audience) ctxAudience.value = sample.context.audience;
+        if (sample.context.current_issue) ctxCurrentIssue.value = sample.context.current_issue;
+        if (sample.context.current_prescription) ctxCurrentPrescription.value = sample.context.current_prescription;
+
+        showToast('Đã nạp tình huống mẫu!', '♩');
+      });
     });
 
-    closeDrawerBtn.addEventListener('click', () => {
-      drawerBackdrop.classList.add('hidden');
-    });
-
-    drawerBackdrop.addEventListener('click', (e) => {
-      if (e.target === drawerBackdrop) {
-        drawerBackdrop.classList.add('hidden');
-      }
-    });
-
-    // Context Accordion
+    // Accordion Toggle
     toggleContextBtn.addEventListener('click', () => {
       const isHidden = contextBody.classList.toggle('hidden');
       toggleContextBtn.querySelector('.toggle-glyph').textContent = isHidden ? '+' : '−';
     });
 
-    // Clear input
+    // Clear Input
     clearInputBtn.addEventListener('click', () => {
       studentMessageInput.value = '';
       ctxAudience.value = '';
@@ -191,13 +140,14 @@ document.addEventListener('DOMContentLoaded', () => {
       ctxCurrentPrescription.value = '';
       resultsDesk.classList.add('hidden');
       emptyWelcome.classList.remove('hidden');
+      outdatedVersionNotice.classList.add('hidden');
       studentMessageInput.focus();
+      sessionStorage.removeItem('active_job_id');
+      sessionStorage.removeItem('active_job_token');
     });
 
-    // Generate replies
+    // Generate Button & Keyboard shortcut
     generateRepliesBtn.addEventListener('click', handleGenerate);
-
-    // Keyboard shortcut Enter in textarea (Cmd/Ctrl + Enter)
     studentMessageInput.addEventListener('keydown', (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
         e.preventDefault();
@@ -205,141 +155,216 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    // Copy to clipboard
-    copyToClipboardBtn.addEventListener('click', () => {
+    // Copy to Clipboard
+    copyToClipboardBtn.addEventListener('click', async () => {
       const text = finalEditorTextarea.value;
-      if (!text.trim()) return;
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(text);
-      } else {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        ta.remove();
-      }
-      showToast('Đã sao chép phản hồi vào bộ nhớ!', '✓');
-    });
-
-    // Confirm Send
-    confirmSendBtn.addEventListener('click', async () => {
-      const chosenText = finalEditorTextarea.value.trim();
-      if (!chosenText) {
-        showToast('Nội dung không được để trống!', '⚠');
+      if (!text.trim()) {
+        showToast('Nội dung đang trống!', '⚠');
         return;
       }
 
-      const activeTone = currentReplies[selectedReplyIdx]?.tone || 'Phong cách chuẩn';
+      let copied = false;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+          await navigator.clipboard.writeText(text);
+          copied = true;
+        } catch (e) {}
+      }
 
-      try {
-        fetch('/api/history', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            student_message: studentMessageInput.value.trim(),
-            chosen_reply: chosenText,
-            tone: activeTone,
-            sent_at: new Date().toISOString()
-          })
-        });
-      } catch (e) {}
+      if (!copied) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          copied = document.execCommand('copy');
+        } catch (e) {}
+        document.body.removeChild(ta);
+      }
 
-      showToast('Đã ghi nhận phản hồi vào sổ tay!', '✓');
+      if (copied) {
+        showToast('Đã sao chép vào bộ nhớ!', '✓');
+      } else {
+        showToast('Không thể sao chép tự động, bạn hãy bôi đen để copy nhé.', 'ℹ');
+      }
     });
+
+    // Confirm Feedback
+    confirmFeedbackBtn.addEventListener('click', handleFeedback);
   }
 
-  // --- CORE GENERATION ENGINE ---
   async function handleGenerate() {
     const msg = studentMessageInput.value.trim();
     if (!msg) {
-      showToast('Vui lòng nhập tin nhắn học viên trước!', '⚠');
+      showToast('Vui lòng nhập nội dung tin nhắn học viên trước.', '⚠');
       studentMessageInput.focus();
       return;
     }
 
-    const apiKey = getApiKey();
-    setLoading(true);
+    setLoading(true, 'Đang tiếp nhận yêu cầu...');
+
+    // Generate or get existing token and idempotency key
+    activeJobToken = generateRandomHex(32);
+    const idempotencyKey = 'req_' + generateRandomHex(16);
+
+    const context = {
+      pronoun: ctxPronoun.value,
+      audience: ctxAudience.value.trim(),
+      current_issue: ctxCurrentIssue.value.trim(),
+      current_prescription: ctxCurrentPrescription.value.trim()
+    };
 
     try {
-      const context = {
-        pronoun: ctxPronoun.value,
-        audience: ctxAudience.value.trim(),
-        current_issue: ctxCurrentIssue.value.trim(),
-        current_prescription: ctxCurrentPrescription.value.trim()
-      };
-
-      const res = await fetch('/api/generate', {
+      const response = await fetch('/api/v1/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-gemini-api-key': apiKey
+          'Idempotency-Key': idempotencyKey,
+          'X-Job-Token': activeJobToken
         },
         body: JSON.stringify({
           message: msg,
-          context: context,
-          model: getModel()
+          context: context
         })
       });
 
-      const json = await res.json();
-      if (!json.success) {
-        throw new Error(json.error || 'Lỗi xử lý phản hồi');
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error?.message || `Lỗi yêu cầu (${response.status})`);
       }
 
-      renderResults(json.data);
+      activeJobId = data.job_id;
+
+      // Save to sessionStorage for refresh tolerance
+      sessionStorage.setItem('active_job_id', activeJobId);
+      sessionStorage.setItem('active_job_token', activeJobToken);
+
+      // Start polling for result
+      startPollingJob(activeJobId, activeJobToken);
     } catch (err) {
-      showToast(err.message, '⚠');
-    } finally {
       setLoading(false);
+      showToast(err.message, '⚠');
     }
   }
 
-  function setLoading(isLoading) {
-    if (isLoading) {
-      loadingSpinner.classList.remove('hidden');
-      generateBtnText.textContent = 'Đang lắng nghe & soạn bài...';
-      generateRepliesBtn.disabled = true;
-      generateRepliesBtn.style.opacity = '0.75';
-    } else {
-      loadingSpinner.classList.add('hidden');
-      generateBtnText.textContent = 'Lắng nghe & Soạn 5 phương án';
-      generateRepliesBtn.disabled = false;
-      generateRepliesBtn.style.opacity = '1';
+  function startPollingJob(jobId, jobToken) {
+    pollStartTime = Date.now();
+    let delay = 500;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/v1/jobs/${encodeURIComponent(jobId)}`, {
+          headers: { 'X-Job-Token': jobToken }
+        });
+
+        if (res.status === 403) {
+          throw new Error('Mã bảo mật công việc không khớp hoặc đã hết hạn.');
+        }
+
+        const data = await res.json();
+        if (data.state === 'succeeded' && data.result) {
+          setLoading(false);
+          renderResults(data.result, data.is_outdated_version);
+          return;
+        }
+
+        if (data.state === 'failed') {
+          setLoading(false);
+          showToast(`Lỗi tạo gợi ý: ${data.error_message || 'Không thành công'}`, '⚠');
+          // Allow manual composition
+          resultsDesk.classList.remove('hidden');
+          emptyWelcome.classList.add('hidden');
+          activeToneChip.textContent = 'Soạn thủ công';
+          finalEditorTextarea.focus();
+          return;
+        }
+
+        // Still queued or running
+        const elapsed = Date.now() - pollStartTime;
+        if (elapsed > 120000) {
+          setLoading(false);
+          showToast('Hết thời gian chờ phản hồi (120s). Vui lòng thử lại.', '⚠');
+          return;
+        }
+
+        const statusMsg = data.state === 'running' 
+          ? `Đang lắng nghe & phân tích (Lần ${data.attempt || 1})...`
+          : 'Đang xếp hàng chờ xử lý...';
+        setLoading(true, statusMsg);
+
+        // Exponential backoff capped at 2500ms
+        delay = Math.min(2500, delay * 1.25);
+        pollTimer = setTimeout(poll, delay);
+      } catch (err) {
+        setLoading(false);
+        showToast(err.message, '⚠');
+      }
+    };
+
+    pollTimer = setTimeout(poll, delay);
+  }
+
+  async function restoreSession() {
+    const savedJobId = sessionStorage.getItem('active_job_id');
+    const savedJobToken = sessionStorage.getItem('active_job_token');
+
+    if (savedJobId && savedJobToken) {
+      activeJobId = savedJobId;
+      activeJobToken = savedJobToken;
+      try {
+        const res = await fetch(`/api/v1/jobs/${encodeURIComponent(activeJobId)}`, {
+          headers: { 'X-Job-Token': activeJobToken }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.state === 'succeeded' && data.result) {
+            renderResults(data.result, data.is_outdated_version);
+          } else if (data.state === 'queued' || data.state === 'running') {
+            startPollingJob(activeJobId, activeJobToken);
+          }
+        }
+      } catch (e) {}
     }
   }
 
-  // --- RENDER RESULTS ---
-  function renderResults(data) {
+  function renderResults(result, isOutdatedVersion = false) {
     emptyWelcome.classList.add('hidden');
     resultsDesk.classList.remove('hidden');
 
-    // 1. Sensitivity Banner (Subtle, dignified)
-    const sens = (data.sensitivity || 'xanh').toLowerCase();
+    if (isOutdatedVersion) {
+      outdatedVersionNotice.classList.remove('hidden');
+    } else {
+      outdatedVersionNotice.classList.add('hidden');
+    }
+
+    // 1. Sensitivity Banner
+    const sens = (result.sensitivity || 'xanh').toLowerCase();
     sensitivityBanner.className = `sensitivity-banner banner-${sens}`;
 
     if (sens === 'do') {
-      bannerTag.textContent = 'Lưu tâm đặc biệt';
-      bannerTitle.textContent = 'Biến cố sức khỏe hoặc gia đình';
-      bannerDesc.textContent = data.flag_reason || 'Học viên đang đối diện với nghịch cảnh. Thầy vui lòng đọc chậm, thấu cảm, không thúc ép tiến độ bài vở và tôn trọng quyền lợi hoàn phí.';
+      bannerTag.textContent = 'CỜ ĐỎ — Lưu tâm đặc biệt';
+      bannerTitle.textContent = 'Biến cố sức khỏe / Gia đình';
+      bannerDesc.textContent = result.flag_reason || 'Học viên gặp khó khăn/bệnh nan y. Tuyệt đối không níu kéo, chỉ an ủi và tôn trọng quyền lợi của học viên.';
     } else if (sens === 'vang') {
-      bannerTag.textContent = 'Xem lại bài tập';
+      bannerTag.textContent = 'CỜ VÀNG — Học vụ / Kỹ thuật';
       bannerTitle.textContent = 'Kỹ thuật ngón hoặc Quy định';
-      bannerDesc.textContent = data.flag_reason || 'Nhận xét cần độ chính xác sư phạm cao. Thầy kiểm tra lại mốc thời gian clip hoặc đối chiếu điều kiện bảo lưu 90 ngày.';
+      bannerDesc.textContent = result.flag_reason || 'Nhận xét cần độ chuẩn xác sư phạm hoặc đối chiếu chính sách bảo lưu.';
     } else {
-      bannerTag.textContent = 'Thường nhật';
-      bannerTitle.textContent = 'Tâm sự & Thói quen luyện tập';
-      bannerDesc.textContent = data.flag_reason || 'Tin nhắn học tập thông thường, khích lệ học viên duy trì 10-15 phút chạm phím nhẹ nhàng.';
+      bannerTag.textContent = 'CỜ XANH — Thường nhật';
+      bannerTitle.textContent = 'Tâm sự & Luyện tập';
+      bannerDesc.textContent = result.flag_reason || 'Trao đổi tích cực, động viên học viên duy trì 15 phút tập đàn.';
     }
 
-    // 2. Suggestions Deck (5 Options)
-    currentReplies = data.replies || [];
+    // 2. Suggestions Deck
+    currentReplies = result.replies || [];
     selectedReplyIdx = 0;
 
     suggestionsStack.innerHTML = currentReplies.map((r, idx) => `
       <div class="suggestion-card ${idx === 0 ? 'active-option' : ''}" data-idx="${idx}">
         <div class="suggestion-card-top">
-          <span class="tone-badge">Phương án ${idx + 1}: ${escapeHtml(r.tone || 'Góc nhìn')}</span>
+          <span class="tone-badge">${escapeHtml(r.tone || `Phương án ${idx + 1}`)}</span>
           <span class="option-select-cue">${idx === 0 ? 'Đang chọn' : 'Bấm để chọn'}</span>
         </div>
         <div class="suggestion-content">${escapeHtml(r.content || '')}</div>
@@ -353,12 +378,10 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
-    // Populate active editor
     if (currentReplies.length > 0) {
       selectOption(0);
     }
 
-    // Smooth scroll into results
     resultsDesk.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
@@ -377,88 +400,62 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    activeToneChip.textContent = `Phương án ${index + 1}: ${r.tone || 'Gợi ý'}`;
+    activeToneChip.textContent = r.tone || `Phương án ${index + 1}`;
     finalEditorTextarea.value = r.content || '';
   }
 
-  // --- DRAWER KNOWLEDGE BASE & HISTORY ---
-  async function loadDrawerDocuments() {
-    try {
-      docSaveIndicator.textContent = 'Đang tải...';
-      const res = await fetch('/api/documents');
-      const data = await res.json();
-      if (data.success && data.documents) {
-        cachedDocs = data.documents;
-        switchDocTab(currentDocFile);
-        docSaveIndicator.textContent = 'Đã đồng bộ';
-      }
-    } catch (e) {
-      docSaveIndicator.textContent = 'Lỗi tải dữ liệu';
+  async function handleFeedback() {
+    const chosenText = finalEditorTextarea.value.trim();
+    if (!chosenText) {
+      showToast('Nội dung phản hồi không được để trống!', '⚠');
+      return;
     }
-  }
 
-  function switchDocTab(filename) {
-    currentDocFile = filename;
-    drawerDocEditor.value = cachedDocs[filename] || '';
+    if (!activeJobId || !activeJobToken) {
+      showToast('Không có phiên làm việc để lưu phản hồi.', '⚠');
+      return;
+    }
 
-    docTabsList.querySelectorAll('.doc-pill').forEach(pill => {
-      if (pill.dataset.file === filename) pill.classList.add('active');
-      else pill.classList.remove('active');
-    });
-  }
+    const selectedReply = currentReplies[selectedReplyIdx]?.content || '';
 
-  docTabsList.querySelectorAll('.doc-pill').forEach(pill => {
-    pill.addEventListener('click', () => switchDocTab(pill.dataset.file));
-  });
-
-  saveDocumentBtn.addEventListener('click', async () => {
-    const content = drawerDocEditor.value;
-    docSaveIndicator.textContent = 'Đang lưu...';
     try {
-      const res = await fetch('/api/documents', {
+      const res = await fetch(`/api/v1/jobs/${encodeURIComponent(activeJobId)}/feedback`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Job-Token': activeJobToken
+        },
         body: JSON.stringify({
-          filename: currentDocFile,
-          content: content
+          selected_reply: selectedReply,
+          edited_reply: chosenText
         })
       });
+
       const data = await res.json();
-      if (data.success) {
-        cachedDocs[currentDocFile] = content;
-        docSaveIndicator.textContent = '✓ Đã lưu thành công';
-        showToast(`Đã lưu "${currentDocFile}" vào AI!`, '✓');
+      if (res.ok) {
+        showToast('Đã lưu phản hồi vào hệ thống!', '✓');
       } else {
-        throw new Error(data.error);
+        showToast(data.error?.message || 'Không thể lưu phản hồi', '⚠');
       }
     } catch (err) {
-      docSaveIndicator.textContent = 'Lỗi lưu';
-      showToast(err.message, '⚠');
+      showToast('Lỗi kết nối khi gửi phản hồi.', '⚠');
     }
-  });
-
-  async function loadDrawerHistory() {
-    try {
-      const res = await fetch('/api/history');
-      const data = await res.json();
-      if (data.success && data.history && data.history.length > 0) {
-        historyMiniList.innerHTML = data.history.slice(0, 5).map(item => `
-          <div class="history-item-mini">
-            <div style="font-weight: 600; color: var(--ink); margin-bottom: 2px;">
-              ${escapeHtml(item.tone || 'Gợi ý')} • <span style="font-size: 11px; color: var(--ink-muted);">${new Date(item.timestamp || item.sent_at).toLocaleDateString('vi-VN')}</span>
-            </div>
-            <div style="color: var(--ink-secondary); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-              ${escapeHtml(item.chosen_reply || '')}
-            </div>
-          </div>
-        `).join('');
-      } else {
-        historyMiniList.innerHTML = '<div class="history-empty-note">Chưa có phản hồi nào được ghi nhận.</div>';
-      }
-    } catch (e) {}
   }
 
-  // --- TOAST NOTIFICATION ---
+  function setLoading(isLoading, text = 'Đang lắng nghe & soạn phương án...') {
+    if (isLoading) {
+      loadingSpinner.classList.remove('hidden');
+      generateBtnText.textContent = text;
+      generateRepliesBtn.disabled = true;
+      generateRepliesBtn.style.opacity = '0.75';
+    } else {
+      loadingSpinner.classList.add('hidden');
+      generateBtnText.textContent = 'Lắng nghe & Soạn phương án';
+      generateRepliesBtn.disabled = false;
+      generateRepliesBtn.style.opacity = '1';
+    }
+  }
+
   let toastTimer = null;
   function showToast(msg, sym = '✓') {
     toastSymbol.textContent = sym;
@@ -468,16 +465,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (toastTimer) clearTimeout(toastTimer);
     toastTimer = setTimeout(() => {
       toastBubble.classList.add('hidden');
-    }, 2500);
-  }
-
-  function escapeHtml(str) {
-    if (!str) return '';
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
+    }, 2800);
   }
 });

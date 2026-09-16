@@ -1007,3 +1007,40 @@ body {
 .hidden {
   display: none !important;
 }
+
+/* Masthead status & warning banner */
+.masthead-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--ink-secondary);
+  background: var(--surface);
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--staff-line);
+}
+
+.masthead-status .status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #B0AAA0;
+}
+
+.masthead-status .status-dot.active {
+  background: #2E7D32;
+  box-shadow: 0 0 0 2px rgba(46, 125, 50, 0.2);
+}
+
+.version-warning-banner {
+  background-color: var(--tint-amber-bg);
+  border: 1px solid var(--tint-amber-border);
+  color: var(--tint-amber);
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  margin-bottom: 20px;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+

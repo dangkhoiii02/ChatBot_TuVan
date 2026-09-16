@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "batch_id": "batch-example-001",
+  "submitted_at": "2026-09-16T09:00:00+07:00",
+  "collected_by": "PARTNER_001",
+  "mode": "delta",
+  "files": [
+    "persona.md",
+    "policies.jsonl",
+    "faq.jsonl",
+    "conversations.jsonl",
+    "safety_rules.jsonl"
+  ],
+  "deleted_item_ids": []
+}

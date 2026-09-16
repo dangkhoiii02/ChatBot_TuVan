@@ -1,0 +1,32 @@
+{
+  "name": "chatbot-thay-minh",
+  "version": "1.0.0",
+  "description": "Bot Tro Ly Thay Minh Piano - SQLite & Gemini Assistant",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "migrate": "node src/db/migrate.js",
+    "test": "node --test tests/**/*.test.js",
+    "test:unit": "node --test tests/unit/*.test.js",
+    "test:integration": "node --test tests/integration/*.test.js",
+    "test:load": "node tests/load/load_test.js",
+    "test:soak": "node tests/soak/soak_test.js",
+    "knowledge": "node bin/knowledge.js",
+    "backup": "node bin/backup.js",
+    "restore": "node bin/restore.js",
+    "cleanup": "node bin/cleanup.js"
+  },
+  "keywords": [
+    "chatbot",
+    "piano",
+    "assistant",
+    "sqlite",
+    "gemini"
+  ],
+  "author": "Minh Piano Studio",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}
