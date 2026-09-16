@@ -1,0 +1,74 @@
+{
+  "manifest_version": 3,
+  "name": "Thầy Minh Copilot",
+  "version": "0.2.0",
+  "description": "AI floating copilot for Pancake (E1 drag + X2 fill-composer + X3 context).",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://pancake.vn/*",
+    "https://*.pancake.vn/*",
+    "https://pages.fm/*",
+    "https://*.pages.fm/*",
+    "https://crm.pancake.vn/*",
+    "https://*.crm.pancake.vn/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://pancake.vn/*",
+        "https://*.pancake.vn/*",
+        "https://pages.fm/*",
+        "https://*.pages.fm/*",
+        "https://crm.pancake.vn/*",
+        "https://*.crm.pancake.vn/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "js": [
+        "content/bridge-source.js",
+        "content/pancake-dom.js",
+        "content/bridge.js",
+        "content/inject.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "sidebar/*",
+        "icons/*"
+      ],
+      "matches": [
+        "https://pancake.vn/*",
+        "https://*.pancake.vn/*",
+        "https://pages.fm/*",
+        "https://*.pages.fm/*",
+        "https://crm.pancake.vn/*",
+        "https://*.crm.pancake.vn/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ]
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Thầy Minh Copilot",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  }
+}

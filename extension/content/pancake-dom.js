@@ -1,0 +1,481 @@
+/**
+ * Pancake DOM helpers (X3 context calibration + X2 fill-composer).
+ *
+ * Confidence legend (no live tenant DOM available at authoring time):
+ *  [sure]   URL path/query/hash patterns commonly used by pages.fm / Pancake SPA
+ *  [likely] data-* attributes and selected-row conventions in chat SPAs
+ *  [guess]  generic header / title text heuristics — verify on live Pancake
+ */
+(function (global) {
+  'use strict';
+
+  const HOST_ID = 'thay-minh-copilot-host';
+
+  /** @type {null | (() => void)} */
+  let stopWatcher = null;
+  /** @type {string} */
+  let lastContextKey = '';
+
+  function isInsideCopilot(el) {
+    if (!el) return false;
+    let n = el;
+    while (n) {
+      if (n.id === HOST_ID) return true;
+      if (n.nodeType === 11 && n.host) {
+        n = n.host;
+        continue;
+      }
+      n = n.parentNode || n.parentElement;
+    }
+    return false;
+  }
+
+  function isVisible(el) {
+    if (!el || !el.getBoundingClientRect) return false;
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return false;
+    const style = window.getComputedStyle(el);
+    if (style.visibility === 'hidden' || style.display === 'none' || style.opacity === '0') {
+      return false;
+    }
+    return true;
+  }
+
+  function looksLikeSearch(el) {
+    const attrs = [
+      el.getAttribute('placeholder') || '',
+      el.getAttribute('aria-label') || '',
+      el.getAttribute('name') || '',
+      el.id || '',
+      el.className && typeof el.className === 'string' ? el.className : '',
+    ]
+      .join(' ')
+      .toLowerCase();
+    return /search|tìm kiếm|tim kiem|filter|lọc/.test(attrs);
+  }
+
+  function firstMatch(re, text) {
+    const m = text && text.match(re);
+    return m && m[1] ? m[1] : null;
+  }
+
+  /**
+   * [sure] Prefer URL — Pancake / pages.fm often encode ids in path, hash, or query.
+   */
+  function extractFromUrl(href) {
+    const url = href || (typeof location !== 'undefined' ? location.href : '');
+    let conversationId = null;
+    let pageId = null;
+
+    try {
+      const u = new URL(url);
+      const q = u.searchParams;
+      conversationId =
+        q.get('conversation_id') ||
+        q.get('conversationId') ||
+        q.get('cid') ||
+        q.get('thread_id') ||
+        null;
+      pageId = q.get('page_id') || q.get('pageId') || q.get('pid') || null;
+
+      const pathBlob = u.pathname + (u.hash || '');
+      conversationId =
+        conversationId ||
+        firstMatch(/conversations?\/([A-Za-z0-9_-]{6,})/i, pathBlob) ||
+        firstMatch(/\/c\/([A-Za-z0-9_-]{6,})/i, pathBlob) ||
+        firstMatch(/[#&?]conversation[_-]?id=([A-Za-z0-9_-]+)/i, url);
+
+      pageId =
+        pageId ||
+        firstMatch(/pages?\/([A-Za-z0-9_-]{6,})/i, pathBlob) ||
+        firstMatch(/[#&?]page[_-]?id=([A-Za-z0-9_-]+)/i, url);
+    } catch (_) {
+      conversationId =
+        firstMatch(/conversations?\/([A-Za-z0-9_-]{6,})/i, url) ||
+        firstMatch(/conversation[_-]?id=([A-Za-z0-9_-]+)/i, url);
+      pageId =
+        firstMatch(/pages?\/([A-Za-z0-9_-]{6,})/i, url) ||
+        firstMatch(/page[_-]?id=([A-Za-z0-9_-]+)/i, url);
+    }
+
+    return { conversationId, pageId, url };
+  }
+
+  /**
+   * [likely] data attributes on selected conversation rows / chat root.
+   */
+  function extractFromDataAttrs() {
+    const attrNames = [
+      'data-conversation-id',
+      'data-conversation_id',
+      'data-cid',
+      'data-thread-id',
+      'data-page-id',
+      'data-page_id',
+      'data-customer-name',
+      'data-contact-name',
+      'data-name',
+    ];
+
+    /** @type {Element[]} */
+    const roots = [];
+    const selected = document.querySelectorAll(
+      '[aria-selected="true"], .active, .selected, .is-active, .is-selected, [class*="selected" i], [class*="active-conversation" i]'
+    );
+    selected.forEach((el) => {
+      if (!isInsideCopilot(el)) roots.push(el);
+    });
+    // Also scan chat header / main pane
+    document
+      .querySelectorAll(
+        '[class*="conversation" i], [class*="chat-header" i], [class*="inbox" i], main, [role="main"]'
+      )
+      .forEach((el) => {
+        if (!isInsideCopilot(el)) roots.push(el);
+      });
+
+    let conversationId = null;
+    let pageId = null;
+    let studentName = null;
+
+    function readAttrs(el) {
+      if (!el || !el.getAttribute) return;
+      for (const name of attrNames) {
+        const v = el.getAttribute(name);
+        if (!v) continue;
+        if (/conversation|cid|thread/i.test(name) && !conversationId) conversationId = v;
+        if (/page/i.test(name) && !pageId) pageId = v;
+        if (/name/i.test(name) && !studentName) studentName = v.trim();
+      }
+      // dataset camelCase fallbacks
+      if (el.dataset) {
+        if (!conversationId) {
+          conversationId =
+            el.dataset.conversationId ||
+            el.dataset.conversation_id ||
+            el.dataset.cid ||
+            el.dataset.threadId ||
+            null;
+        }
+        if (!pageId) {
+          pageId = el.dataset.pageId || el.dataset.page_id || null;
+        }
+        if (!studentName) {
+          studentName =
+            el.dataset.customerName ||
+            el.dataset.contactName ||
+            el.dataset.name ||
+            null;
+        }
+      }
+    }
+
+    for (const el of roots) {
+      readAttrs(el);
+      let p = el;
+      for (let i = 0; i < 4 && p; i++) {
+        readAttrs(p);
+        p = p.parentElement;
+      }
+      if (conversationId && pageId && studentName) break;
+    }
+
+    return { conversationId, pageId, studentName };
+  }
+
+  /**
+   * [guess] Visible header title near the chat pane (exclude list avatars / our host).
+   */
+  function extractStudentNameGuess() {
+    const selectors = [
+      '[class*="conversation-header" i] h1',
+      '[class*="conversation-header" i] h2',
+      '[class*="chat-header" i] h1',
+      '[class*="chat-header" i] h2',
+      '[class*="conversation-title" i]',
+      '[class*="customer-name" i]',
+      '[class*="contact-name" i]',
+      'header h1',
+      'header h2',
+    ];
+    for (const sel of selectors) {
+      try {
+        const nodes = document.querySelectorAll(sel);
+        for (const el of nodes) {
+          if (isInsideCopilot(el) || !isVisible(el)) continue;
+          const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+          if (text && text.length >= 2 && text.length <= 80 && !/pancake|inbox|hội thoại/i.test(text)) {
+            return text;
+          }
+        }
+      } catch (_) {
+        /* ignore */
+      }
+    }
+    return null;
+  }
+
+  /**
+   * @returns {{
+   *   conversationId: string|null,
+   *   studentName: string|null,
+   *   pageId: string|null,
+   *   url: string,
+   *   sources?: Record<string, string>
+   * }}
+   */
+  function getConversationContext() {
+    const fromUrl = extractFromUrl();
+    const fromDom = extractFromDataAttrs();
+    const nameGuess = extractStudentNameGuess();
+
+    const conversationId = fromUrl.conversationId || fromDom.conversationId || null;
+    const pageId = fromUrl.pageId || fromDom.pageId || null;
+    const studentName = fromDom.studentName || nameGuess || null;
+
+    return {
+      conversationId,
+      studentName,
+      pageId,
+      url: fromUrl.url || (typeof location !== 'undefined' ? location.href : ''),
+      sources: {
+        conversationId: fromUrl.conversationId
+          ? 'url[sure]'
+          : fromDom.conversationId
+            ? 'dom-attr[likely]'
+            : 'none',
+        pageId: fromUrl.pageId
+          ? 'url[sure]'
+          : fromDom.pageId
+            ? 'dom-attr[likely]'
+            : 'none',
+        studentName: fromDom.studentName
+          ? 'dom-attr[likely]'
+          : nameGuess
+            ? 'header-text[guess]'
+            : 'none',
+      },
+    };
+  }
+
+  function contextKey(ctx) {
+    return [ctx.conversationId || '', ctx.pageId || '', ctx.studentName || '', ctx.url || ''].join('|');
+  }
+
+  /**
+   * Watch URL + DOM; invoke onChange when flat context identity changes.
+   * @param {(ctx: ReturnType<typeof getConversationContext>) => void} onChange
+   */
+  function startContextWatcher(onChange) {
+    stopContextWatcher();
+    if (typeof onChange !== 'function') return;
+
+    const emit = () => {
+      const ctx = getConversationContext();
+      const key = contextKey(ctx);
+      if (key === lastContextKey) return;
+      lastContextKey = key;
+      try {
+        onChange(ctx);
+      } catch (err) {
+        console.warn('[thay-minh] context watcher callback failed:', err);
+      }
+    };
+
+    // Initial
+    emit();
+
+    const onUrl = () => emit();
+    window.addEventListener('hashchange', onUrl);
+    window.addEventListener('popstate', onUrl);
+
+    // Patch history push/replace for SPA navigations
+    const origPush = history.pushState;
+    const origReplace = history.replaceState;
+    history.pushState = function () {
+      const ret = origPush.apply(this, arguments);
+      queueMicrotask(emit);
+      return ret;
+    };
+    history.replaceState = function () {
+      const ret = origReplace.apply(this, arguments);
+      queueMicrotask(emit);
+      return ret;
+    };
+
+    let debounce = null;
+    const obs = new MutationObserver(() => {
+      if (debounce) clearTimeout(debounce);
+      debounce = setTimeout(emit, 200);
+    });
+    try {
+      obs.observe(document.documentElement || document.body, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: [
+          'aria-selected',
+          'class',
+          'data-conversation-id',
+          'data-conversation_id',
+          'data-page-id',
+          'data-page_id',
+          'data-cid',
+        ],
+      });
+    } catch (_) {
+      /* ignore */
+    }
+
+    // Lightweight poll as fallback for silent SPA updates
+    const interval = setInterval(emit, 1500);
+
+    stopWatcher = () => {
+      window.removeEventListener('hashchange', onUrl);
+      window.removeEventListener('popstate', onUrl);
+      history.pushState = origPush;
+      history.replaceState = origReplace;
+      obs.disconnect();
+      clearInterval(interval);
+      if (debounce) clearTimeout(debounce);
+      stopWatcher = null;
+    };
+  }
+
+  function stopContextWatcher() {
+    if (typeof stopWatcher === 'function') {
+      try {
+        stopWatcher();
+      } catch (_) {
+        /* ignore */
+      }
+    }
+    stopWatcher = null;
+  }
+
+  function findComposer() {
+    const selectors = [
+      'textarea[placeholder*="nhập" i]',
+      'textarea[placeholder*="Nhập" i]',
+      'textarea[placeholder*="message" i]',
+      'textarea[placeholder*="tin nhắn" i]',
+      'div[role="textbox"][contenteditable="true"]',
+      '[contenteditable="true"]',
+      'textarea',
+      'div[role="textbox"]',
+      '[data-testid*="composer" i]',
+      '.composer textarea',
+      '.chat-input textarea',
+      'input[type="text"]',
+    ];
+
+    /** @type {Element[]} */
+    const candidates = [];
+    for (const sel of selectors) {
+      try {
+        document.querySelectorAll(sel).forEach((el) => candidates.push(el));
+      } catch (_) {
+        /* ignore */
+      }
+    }
+
+    const scored = candidates
+      .filter((el) => el && !isInsideCopilot(el) && isVisible(el) && !looksLikeSearch(el))
+      .map((el) => {
+        const r = el.getBoundingClientRect();
+        const area = r.width * r.height;
+        const bottomBias = r.top / Math.max(window.innerHeight, 1);
+        return { el, score: area + bottomBias * 5000 };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    return scored.length ? scored[0].el : null;
+  }
+
+  function setNativeValue(el, text) {
+    const proto =
+      el instanceof HTMLTextAreaElement
+        ? window.HTMLTextAreaElement.prototype
+        : el instanceof HTMLInputElement
+          ? window.HTMLInputElement.prototype
+          : null;
+    if (proto) {
+      const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+      if (desc && desc.set) {
+        desc.set.call(el, text);
+        return;
+      }
+    }
+    el.value = text;
+  }
+
+  function dispatchInputEvents(el, text) {
+    try {
+      el.dispatchEvent(
+        new InputEvent('input', {
+          bubbles: true,
+          cancelable: true,
+          inputType: 'insertText',
+          data: text,
+        })
+      );
+    } catch (_) {
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  function fillComposer(text) {
+    const value = text == null ? '' : String(text);
+    const el = findComposer();
+    if (!el) return { ok: false, error: 'composer-not-found' };
+
+    try {
+      el.focus();
+      const isEditable =
+        el.isContentEditable ||
+        (el.getAttribute && el.getAttribute('contenteditable') === 'true');
+
+      if (isEditable) {
+        if (document.execCommand) {
+          try {
+            document.execCommand('selectAll', false, null);
+            const ok = document.execCommand('insertText', false, value);
+            if (!ok) el.textContent = value;
+          } catch (_) {
+            el.textContent = value;
+          }
+        } else {
+          el.textContent = value;
+        }
+        dispatchInputEvents(el, value);
+      } else {
+        setNativeValue(el, value);
+        dispatchInputEvents(el, value);
+      }
+      return { ok: true };
+    } catch (err) {
+      return {
+        ok: false,
+        error: 'fill-failed: ' + (err && err.message ? err.message : String(err)),
+      };
+    }
+  }
+
+  global.ThayMinhPancakeDom = {
+    getConversationContext,
+    fillComposer,
+    findComposer,
+    startContextWatcher,
+    stopContextWatcher,
+    SELECTORS: {
+      // Documented confidence — refine after live smoke test
+      conversationIdUrl: 'path/query/hash [sure]',
+      pageIdUrl: 'path/query/hash [sure]',
+      conversationIdDom: 'data-conversation-id / selected row [likely]',
+      studentNameDom: 'data-customer-name [likely] / header text [guess]',
+      composer:
+        'textarea / [contenteditable] / [role=textbox] near bottom [guess until live]',
+    },
+  };
+})(typeof window !== 'undefined' ? window : globalThis);

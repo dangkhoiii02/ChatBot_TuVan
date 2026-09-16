@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Thầy Minh Copilot</title>
+  <link rel="stylesheet" href="sidebar.css" />
+</head>
+<body>
+  <div class="shell">
+    <header class="shell-header">
+      <div class="shell-logo" aria-hidden="true">TM</div>
+      <div class="shell-title">
+        <h1>Thầy Minh Copilot</h1>
+        <p>Pancake AI · floating panel</p>
+      </div>
+    </header>
+
+    <div class="shell-body">
+      <div id="waiting" class="waiting visible" role="status">
+        <h2>Đang chờ widget…</h2>
+        <p>
+          Mặc định tải Vite widget tại <code>http://127.0.0.1:5174</code>.
+          Nếu widget chưa chạy, chỉnh URL bên dưới (lưu vào <code>chrome.storage.sync.widgetUrl</code>).
+        </p>
+        <label>
+          Widget URL
+          <input id="widget-url-input" type="url" spellcheck="false" placeholder="http://127.0.0.1:5174" />
+        </label>
+        <div class="waiting-actions">
+          <button type="button" class="primary" id="btn-save-reload">Lưu &amp; tải lại</button>
+          <button type="button" id="btn-retry">Thử lại</button>
+        </div>
+      </div>
+      <iframe
+        id="widget-frame"
+        title="ChatBot TuVan Widget"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+      ></iframe>
+    </div>
+
+    <footer class="shell-footer">
+      <span class="hint">X2: fill-composer qua widget footer</span>
+      <span class="pill" title="Handled by widget → bridge">Đổ vào ô soạn</span>
+    </footer>
+  </div>
+
+  <script>
+    // Must match shared/bridge.ts BRIDGE_SOURCE (JS mirror in content/bridge-source.js)
+    const BRIDGE_SOURCE = 'thay-minh-copilot';
+    const DEFAULT_WIDGET_URL = 'http://127.0.0.1:5174';
+
+    const waitingEl = document.getElementById('waiting');
+    const frame = document.getElementById('widget-frame');
+    const urlInput = document.getElementById('widget-url-input');
+    const btnSave = document.getElementById('btn-save-reload');
+    const btnRetry = document.getElementById('btn-retry');
+
+    let currentUrl = DEFAULT_WIDGET_URL;
+    let hideWaitingTimer = null;
+
+    function showWaiting(show) {
+      waitingEl.classList.toggle('visible', !!show);
+    }
+
+    function loadWidget(url) {
+      currentUrl = url || DEFAULT_WIDGET_URL;
+      urlInput.value = currentUrl;
+      showWaiting(true);
+      frame.src = currentUrl;
+      if (hideWaitingTimer) clearTimeout(hideWaitingTimer);
+      hideWaitingTimer = setTimeout(() => showWaiting(false), 2500);
+    }
+
+    frame.addEventListener('load', () => {});
+
+    btnSave.addEventListener('click', () => {
+      const next = (urlInput.value || '').trim() || DEFAULT_WIDGET_URL;
+      chrome.storage.sync.set({ widgetUrl: next }, () => loadWidget(next));
+    });
+
+    btnRetry.addEventListener('click', () => loadWidget(currentUrl));
+
+    // Relay widget↔extension messages through this shell so the content-script
+    // bridge sees a single iframe target (hybrid architecture).
+    window.addEventListener('message', (event) => {
+      const data = event.data;
+      if (!data || data.source !== BRIDGE_SOURCE) return;
+
+      // Widget → parent page (content script bridge listens on window)
+      if (event.source === frame.contentWindow) {
+        if (data.type === 'widget-ready') {
+          showWaiting(false);
+        }
+        try {
+          window.parent.postMessage(data, '*');
+        } catch (_) { /* ignore */ }
+        return;
+      }
+
+      // Extension / page → widget
+      if (frame.contentWindow && event.source !== frame.contentWindow) {
+        try {
+          frame.contentWindow.postMessage(data, '*');
+        } catch (_) { /* ignore */ }
+      }
+    });
+
+    chrome.storage.sync.get({ widgetUrl: DEFAULT_WIDGET_URL }, (result) => {
+      loadWidget(result.widgetUrl || DEFAULT_WIDGET_URL);
+    });
+
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'sync' || !changes.widgetUrl) return;
+      const next = changes.widgetUrl.newValue || DEFAULT_WIDGET_URL;
+      if (next !== currentUrl) loadWidget(next);
+    });
+  </script>
+</body>
+</html>
