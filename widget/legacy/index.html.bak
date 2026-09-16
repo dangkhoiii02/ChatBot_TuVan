@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thầy Minh Piano - AI Copilot</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+        
+        :root {
+            --primary: #2563eb;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: linear-gradient(135deg, #f8fafc 0%, #e0f2fe 100%);
+            color: #1e2937;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .widget-container {
+            max-width: 420px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1),
+                        0 4px 6px -4px rgb(0 0 0 / 0.1);
+            overflow: hidden;
+            border: 1px solid #e2e8f0;
+        }
+        
+        .header {
+            background: linear-gradient(90deg, #2563eb, #3b82f6);
+            color: white;
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .logo {
+            width: 42px;
+            height: 42px;
+            background: white;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .title {
+            font-weight: 600;
+            font-size: 18px;
+        }
+        
+        .content {
+            padding: 20px;
+        }
+        
+        .info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+            padding: 12px 16px;
+            background: #f8fafc;
+            border-radius: 10px;
+            font-size: 14px;
+        }
+        
+        .info-icon {
+            font-size: 20px;
+        }
+        
+        .status {
+            font-size: 12px;
+            color: #64748b;
+            margin-top: 8px;
+        }
+        
+        .btn {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 10px;
+            font-weight: 500;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 12px;
+            transition: all 0.2s;
+        }
+        
+        .btn:hover {
+            background: #1e40af;
+            transform: translateY(-1px);
+        }
+        
+        .demo {
+            font-size: 12px;
+            color: #64748b;
+            margin-top: 16px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="widget-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">🎹</div>
+            <div>
+                <div class="title">Thầy Minh Piano</div>
+                <div style="font-size:13px; opacity:0.9;">AI Copilot</div>
+            </div>
+        </div>
+        
+        <!-- Content -->
+        <div class="content">
+            <div class="info">
+                <span class="info-icon">👋</span>
+                <div>
+                    <strong>Chào bạn</strong><br>
+                    <span>Thầy Minh Piano</span>
+                </div>
+            </div>
+            
+            <div class="info">
+                <span class="info-icon">📚</span>
+                <div>
+                    <strong>Phong cách</strong><br>
+                    <span>Gần gũi, vui vẻ, chuyên nghiệp</span>
+                </div>
+            </div>
+            
+            <div class="info">
+                <span class="info-icon">🔧</span>
+                <div>
+                    <strong>Trạng thái</strong><br>
+                    <span>Đang sẵn sàng hỗ trợ</span>
+                </div>
+            </div>
+
+            <div class="info" style="background:#f8fafc">
+                <span class="info-icon">👤</span>
+                <div>
+                    <strong>Xưng hô</strong><br>
+                    <span>Thầy — Em</span>
+                </div>
+            </div>
+
+            <div class="info" style="background:#f8fafc">
+                <span class="info-icon">📝</span>
+                <div>
+                    <strong>Lưu ý</strong><br>
+                    <span>Phương án #2 - Thân mật & Kích thích</span>
+                </div>
+            </div>
+            
+            <button class="btn" onclick="handleSendReply()">
+                Nhận tin nhắn học viên
+            </button>
+
+            <button class="btn" style="margin-top:8px;background:#059669" onclick="createAISuggestion()">
+                Tạo gợi ý AI
+            </button>
+
+            <button class="btn" style="margin-top:8px;background:#7c3aed" onclick="createAISuggestion()">
+                Tạo gợi ý AI
+            </button>
+            
+            <div class="demo">
+                Widget Thầy Minh Piano - Đang test nhúng vào Pancake
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Widget logic cơ bản
+        console.log('%c✅ Widget Thầy Minh Piano đã khởi động', 'color:#2563eb; font-weight:600');
+        
+        // Lấy conversation ID từ Pancake (nếu nhúng iframe)
+        function getConversationId() {
+            // Trong iframe: window.parent.document.querySelector('.conversation-title, .chat-header, [data-conversation-id]')
+            // Trong content script: document.querySelector('selector')
+            const selectors = [
+                '.conversation-title',
+                '.chat-header .title',
+                '[data-conversation-id]',
+                '.conversation-header'
+            ];
+            
+            for (let selector of selectors) {
+                const el = document.querySelector(selector);
+                if (el) {
+                    const id = 'pancake-conv-' + Math.random().toString(36).substr(2, 9);
+                    console.log('%c✅ Đã lấy conversation ID:', 'color:#10b981', id);
+                    return id;
+                }
+            }
+            return 'standalone-demo';
+        }
+        
+        // Gửi reply về Pancake
+        function sendReplyToPancake(reply) {
+            const event = new CustomEvent('pancake-ai-reply', {
+                detail: { 
+                    conversationId: getConversationId(), 
+                    reply: reply,
+                    widget: 'thay-minh-piano',
+                    timestamp: new Date().toISOString()
+                }
+            });
+            window.dispatchEvent(event);
+            console.log('%c✅ Đã gửi reply:', 'color:#10b981', reply);
+        }
+
+        function handleSendReply() {
+            sendReplyToPancake('Chào em, em đã làm được bài Für Elise chưa?');
+        }
+
+        function createAISuggestion() {
+            const reply = "Chào em, em muốn học bài nào hôm nay? Mình có thể gợi ý bài tập phù hợp.";
+            sendReplyToPancake(reply);
+            console.log('%c🎵 Đã tạo gợi ý AI (mock):', 'color:#8b5cf6', reply);
+        }
+        
+        // Test click
+        document.querySelector('button').addEventListener('click', () => {
+            sendReplyToPancake('Chào em, em đã làm được bài Für Elise chưa?');
+        });
+    </script>
+</body>
+</html>
