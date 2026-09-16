@@ -115,5 +115,7 @@ Hosts matched: `pages.fm`, `*.pages.fm`, `pancake.vn`, `*.pancake.vn`, `crm.panc
 
 - `extension/widget/` is the built UI (no Vite required for smoke)
 - `web_accessible_resources` includes `widget/*` and `widget/assets/*`
-- Manifest version **0.3.0**
+- Manifest version **0.3.1**
+- Shell logic lives in `sidebar/sidebar.js` (no inline `<script>` — MV3 CSP)
+- Sync also strips `crossorigin` from packed `widget/index.html`
 - Do not edit `widget/src` from this track — only consume dist via sync script
