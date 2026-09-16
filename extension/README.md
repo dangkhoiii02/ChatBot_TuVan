@@ -33,23 +33,24 @@ If your tenant uses another host, add it to `manifest.json` → `content_scripts
 3. Shell iframes the **widget URL** (Vite app, Dev 1)
 4. Shell relays `postMessage`; `content/bridge.js` handles the contract on the page
 
-## Default widget URL
+## Default widget URL (E-fix)
 
-- Default: **`http://127.0.0.1:5174`** (5173 is used by the demo frontend)
+- **Default (packed):** `chrome.runtime.getURL('widget/index.html')` — files under `extension/widget/` (synced from `widget/dist/`)
+- **Dev fallback:** `http://127.0.0.1:5174` (Vite). Set via the waiting-panel URL input or:
+
+```js
+chrome.storage.sync.set({ widgetUrl: 'http://127.0.0.1:5174' })
+```
+
 - Storage key: `chrome.storage.sync.widgetUrl`
-- Change via the waiting panel in the shell, or:
+- On install/startup, empty / `*:5173` / prior Vite default `127.0.0.1:5174` migrate → **packed** URL
+- After Dev 1 rebuilds the widget:
 
-```js
-chrome.storage.sync.set({ widgetUrl: 'http://127.0.0.1:5174' })
+```bash
+extension/scripts/sync-widget-dist.sh
 ```
 
-If an older install still has `localhost:5173` (or any `*:5173`) saved, overwrite then reload the tab:
-
-```js
-chrome.storage.sync.set({ widgetUrl: 'http://127.0.0.1:5174' })
-```
-
-The service worker also migrates stored `5173` → `5174` on install/startup.
+That copies `widget/dist` → `extension/widget` and rewrites absolute `/assets/` → `./assets/` so `chrome-extension://` loads work.
 
 ## Message contract
 
@@ -108,3 +109,11 @@ On `widget-ready` and whenever the active conversation appears to change, the ex
 Hosts matched: `pages.fm`, `*.pages.fm`, `pancake.vn`, `*.pancake.vn`, `crm.pancake.vn`, `*.crm.pancake.vn`, localhost.
 
 **Blocker:** selectors not verified against a live Pancake inbox session in this sprint — open DevTools on Pancake, log `ThayMinhPancakeDom.getConversationContext()`, and send real DOM snapshots to tighten X3.
+
+
+## E-fix packed widget
+
+- `extension/widget/` is the built UI (no Vite required for smoke)
+- `web_accessible_resources` includes `widget/*` and `widget/assets/*`
+- Manifest version **0.3.0**
+- Do not edit `widget/src` from this track — only consume dist via sync script

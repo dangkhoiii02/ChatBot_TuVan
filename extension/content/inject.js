@@ -4,7 +4,7 @@
  *   1) Shadow host
  *   2) Floating panel (~360×560) with drag handle ⠿ + optional resize
  *   3) iframe → chrome.runtime.getURL('sidebar/index.html') shell
- *   4) Shell iframes widgetUrl (default http://127.0.0.1:5174)
+ *   4) Shell iframes widgetUrl (default packed widget/ via getURL; Vite 5174 fallback)
  * Bridge (X2) unchanged: fill-composer / flat conversation-context / BRIDGE_SOURCE.
  */
 (function () {
@@ -19,7 +19,13 @@
     (globalThis.ThayMinhBridgeContract &&
       globalThis.ThayMinhBridgeContract.BRIDGE_SOURCE) ||
     'thay-minh-copilot';
-  const DEFAULT_WIDGET_URL = 'http://127.0.0.1:5174';
+  const DEV_VITE_URL = 'http://127.0.0.1:5174';
+  const DEFAULT_WIDGET_URL =
+    (typeof chrome !== 'undefined' &&
+      chrome.runtime &&
+      typeof chrome.runtime.getURL === 'function' &&
+      chrome.runtime.getURL('widget/index.html')) ||
+    DEV_VITE_URL;
 
   if (document.getElementById(HOST_ID)) {
     return;

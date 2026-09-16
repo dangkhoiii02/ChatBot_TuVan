@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Thầy Minh Copilot",
-  "version": "0.2.0",
-  "description": "AI floating copilot for Pancake (E1 drag + X2 fill-composer + X3 context).",
+  "version": "0.3.0",
+  "description": "AI floating copilot for Pancake (E1 + X2 + X3 + packed widget E-fix).",
   "permissions": [
     "storage"
   ],
@@ -44,7 +44,9 @@
     {
       "resources": [
         "sidebar/*",
-        "icons/*"
+        "icons/*",
+        "widget/*",
+        "widget/assets/*"
       ],
       "matches": [
         "https://pancake.vn/*",

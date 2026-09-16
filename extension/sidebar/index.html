@@ -20,12 +20,12 @@
       <div id="waiting" class="waiting visible" role="status">
         <h2>Đang chờ widget…</h2>
         <p>
-          Mặc định tải Vite widget tại <code>http://127.0.0.1:5174</code>.
-          Nếu widget chưa chạy, chỉnh URL bên dưới (lưu vào <code>chrome.storage.sync.widgetUrl</code>).
+          Mặc định tải <strong>widget đã pack</strong> trong extension (<code>widget/index.html</code>).
+          Dev: có thể trỏ Vite <code>http://127.0.0.1:5174</code> (lưu <code>chrome.storage.sync.widgetUrl</code>).
         </p>
         <label>
           Widget URL
-          <input id="widget-url-input" type="url" spellcheck="false" placeholder="http://127.0.0.1:5174" />
+          <input id="widget-url-input" type="url" spellcheck="false" placeholder="packed hoặc http://127.0.0.1:5174" />
         </label>
         <div class="waiting-actions">
           <button type="button" class="primary" id="btn-save-reload">Lưu &amp; tải lại</button>
@@ -48,7 +48,13 @@
   <script>
     // Must match shared/bridge.ts BRIDGE_SOURCE (JS mirror in content/bridge-source.js)
     const BRIDGE_SOURCE = 'thay-minh-copilot';
-    const DEFAULT_WIDGET_URL = 'http://127.0.0.1:5174';
+    const DEV_VITE_URL = 'http://127.0.0.1:5174';
+    const DEFAULT_WIDGET_URL =
+      (typeof chrome !== 'undefined' &&
+        chrome.runtime &&
+        typeof chrome.runtime.getURL === 'function' &&
+        chrome.runtime.getURL('widget/index.html')) ||
+      DEV_VITE_URL;
 
     const waitingEl = document.getElementById('waiting');
     const frame = document.getElementById('widget-frame');
