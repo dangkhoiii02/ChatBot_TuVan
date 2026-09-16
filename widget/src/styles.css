@@ -10,8 +10,6 @@
   --purple-soft: #ede9fe;
   --purple: #7c3aed;
   --radius: 8px;
-  --width: 360px;
-  --panel-height: 560px;
   font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color: var(--text);
   background: #fff;
@@ -27,7 +25,6 @@ body,
   margin: 0;
   width: 100%;
   height: 100%;
-  max-width: var(--width);
   max-height: 100%;
   background: #fff;
   overflow: hidden;
@@ -42,10 +39,8 @@ textarea {
   position: relative;
   display: flex;
   flex-direction: column;
-  width: var(--width);
-  max-width: 100%;
+  width: 100%;
   height: 100%;
-  max-height: min(100%, var(--panel-height));
   background: #fff;
   border-left: 1px solid var(--border);
   overflow: hidden;
