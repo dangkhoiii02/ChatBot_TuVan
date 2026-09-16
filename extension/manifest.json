@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Thầy Minh Copilot",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "AI floating copilot for Pancake (E1 + X2 + X3 + packed widget; E-fix2 CSP-safe sidebar).",
   "permissions": [
     "storage"
