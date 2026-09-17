@@ -65,6 +65,9 @@ Every message includes `source: 'thay-minh-copilot'`.
 | Ext→widget | `bridge-ready` | Handshake |
 | Ext→widget | `conversation-context` | **Flat** fields: `conversationId`, `studentName`, `pageId`, `url` |
 | Ext→widget | `fill-composer-result` | `{ ok, error?, requestId? }` |
+| Ext→widget | `pancake-access-token` | `{ accessToken }` (do not log raw) |
+| Ext→widget | `dom-messages-result` | `{ requestId, ok, messages?, error? }` |
+| Widget→ext | `request-dom-messages` | `{ requestId }` → scrape DOM messages |
 
 `fill-composer` never auto-sends; it only fills the composer.
 
@@ -72,6 +75,13 @@ Every message includes `source: 'thay-minh-copilot'`.
 
 - Calibrate conversation id / student name / pageId selectors in `pancake-dom.js`
 - Re-emit `conversation-context` on conversation switch
+
+
+## E1 — Pancake access_token + DOM messages
+
+1. **MAIN-world hook** (`content/page-hook.js`, `document_start`): intercepts `fetch` / XHR and resource URLs for `access_token` (e.g. `/api/v1/pages?access_token=`). Posts to the content script via `source: thay-minh-copilot-hook` — **never logs the raw token**.
+2. **Bridge** stores token in `chrome.storage.session` and emits `pancake-access-token` to the widget on `widget-ready` (and when newly captured). Widget still supports paste fallback if none captured.
+3. **Fallback B**: widget `request-dom-messages` → `ThayMinhPancakeDom.getDomMessages()` → `dom-messages-result` (heuristic scrape; calibrate on live Pancake).
 
 ## Ownership
 

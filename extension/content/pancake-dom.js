@@ -462,10 +462,122 @@
     }
   }
 
+
+  /**
+   * Scrape visible chat messages for fallback B (heuristic — calibrate on live Pancake).
+   * @returns {{ ok: boolean, messages?: Array<{id:string,sender:string,text:string,createdAt:string,senderName?:string}>, error?: string }}
+   */
+  function getDomMessages() {
+    try {
+      const roots = [];
+      document
+        .querySelectorAll(
+          '[class*="message-list" i], [class*="messages" i], [class*="chat-body" i], [class*="conversation-body" i], [role="log"], [class*="inbox-chat" i], main, [role="main"]'
+        )
+        .forEach((el) => {
+          if (el && !isInsideCopilot(el)) roots.push(el);
+        });
+      const searchRoot = roots[0] || document.body;
+      if (!searchRoot) return { ok: false, error: 'no-dom-root' };
+
+      const nodeList = searchRoot.querySelectorAll(
+        '[data-message-id], [data-msg-id], [class*="message-item" i], [class*="chat-message" i], [class*="bubble" i], [class*="msg-" i]'
+      );
+      /** @type {Element[]} */
+      const nodes = [];
+      nodeList.forEach((el) => {
+        if (!el || isInsideCopilot(el) || !isVisible(el)) return;
+        // Prefer leaf-ish bubbles: skip containers that wrap many bubbles
+        const childBubbles = el.querySelectorAll(
+          '[class*="bubble" i], [class*="message-item" i], [data-message-id]'
+        );
+        if (childBubbles.length > 2) return;
+        nodes.push(el);
+      });
+
+      const midX = (window.innerWidth || 1200) / 2;
+      const seen = new Set();
+      /** @type {Array<{id:string,sender:'student'|'staff'|'system',text:string,createdAt:string,senderName?:string}>} */
+      const messages = [];
+
+      for (let i = 0; i < nodes.length; i++) {
+        const el = nodes[i];
+        const text = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+        if (!text || text.length < 1 || text.length > 4000) continue;
+        // Skip pure timestamps / chrome chrome
+        if (/^\d{1,2}:\d{2}$/.test(text)) continue;
+
+        const idAttr =
+          el.getAttribute('data-message-id') ||
+          el.getAttribute('data-msg-id') ||
+          el.getAttribute('data-id') ||
+          '';
+        const id = idAttr || 'dom-' + i + '-' + text.slice(0, 24);
+
+        if (seen.has(id) || seen.has(text)) continue;
+        seen.add(id);
+        seen.add(text);
+
+        const cls = (
+          (el.className && typeof el.className === 'string' ? el.className : '') +
+          ' ' +
+          (el.parentElement && typeof el.parentElement.className === 'string'
+            ? el.parentElement.className
+            : '')
+        ).toLowerCase();
+
+        let sender = /** @type {'student'|'staff'|'system'} */ ('student');
+        if (/system|bot|auto|note|ghi chú/.test(cls + ' ' + text.slice(0, 40).toLowerCase())) {
+          sender = 'system';
+        } else if (
+          /outbound|outgoing|mine|is-me|from-me|agent|staff|page-message|right/.test(cls)
+        ) {
+          sender = 'staff';
+        } else if (/inbound|incoming|customer|visitor|left|from-them/.test(cls)) {
+          sender = 'student';
+        } else {
+          const r = el.getBoundingClientRect();
+          // Right-biased bubbles → staff (common chat layout)
+          sender = r.left + r.width / 2 > midX ? 'staff' : 'student';
+        }
+
+        let senderName;
+        const nameEl = el.querySelector(
+          '[class*="sender" i], [class*="author" i], [class*="name" i]'
+        );
+        if (nameEl) {
+          const n = (nameEl.textContent || '').trim();
+          if (n && n.length < 80) senderName = n;
+        }
+
+        messages.push({
+          id: String(id),
+          sender,
+          text,
+          createdAt: new Date().toISOString(),
+          senderName,
+        });
+      }
+
+      // Keep last 50
+      const sliced = messages.slice(-50);
+      if (!sliced.length) return { ok: false, error: 'no-messages-found' };
+      return { ok: true, messages: sliced };
+    } catch (err) {
+      return {
+        ok: false,
+        error:
+          'dom-scrape-failed: ' +
+          (err && err.message ? err.message : String(err)),
+      };
+    }
+  }
+
   global.ThayMinhPancakeDom = {
     getConversationContext,
     fillComposer,
     findComposer,
+    getDomMessages,
     startContextWatcher,
     stopContextWatcher,
     SELECTORS: {

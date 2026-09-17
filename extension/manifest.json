@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Thầy Minh Copilot",
-  "version": "0.3.2",
-  "description": "AI floating copilot for Pancake (E1 + X2 + X3 + packed widget; E-fix2 CSP-safe sidebar).",
+  "version": "0.4.0",
+  "description": "AI floating copilot for Pancake (E1 API token hook + DOM messages; X2/X3; packed widget).",
   "permissions": [
     "storage"
   ],
@@ -20,6 +20,23 @@
     "service_worker": "background.js"
   },
   "content_scripts": [
+    {
+      "matches": [
+        "https://pancake.vn/*",
+        "https://*.pancake.vn/*",
+        "https://pages.fm/*",
+        "https://*.pages.fm/*",
+        "https://crm.pancake.vn/*",
+        "https://*.crm.pancake.vn/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "js": [
+        "content/page-hook.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
     {
       "matches": [
         "https://pancake.vn/*",
