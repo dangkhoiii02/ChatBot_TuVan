@@ -81,7 +81,8 @@ Every message includes `source: 'thay-minh-copilot'`.
 
 1. **MAIN-world hook** (`content/page-hook.js`, `document_start`): intercepts `fetch` / XHR and resource URLs for `access_token` (e.g. `/api/v1/pages?access_token=`). Posts to the content script via `source: thay-minh-copilot-hook` — **never logs the raw token**.
 2. **Bridge** stores token in `chrome.storage.session` and emits `pancake-access-token` to the widget on `widget-ready` (and when newly captured). Widget still supports paste fallback if none captured.
-3. **Fallback B**: widget `request-dom-messages` → `ThayMinhPancakeDom.getDomMessages()` → `dom-messages-result` (heuristic scrape; calibrate on live Pancake).
+3. **Conversation context (X3/E1):** MAIN-world hook also captures `conversationId`/`pageId` from Pancake API URLs (`/pages/{pageId}/conversations/{id}`), stashes in `sessionStorage`, and bridge emits `conversation-context` (re-emit on `widget-ready` + SPA/DOM watcher). DevTools logs only `hasId=true|false` (no PII).
+4. **Fallback B**: widget `request-dom-messages` → `ThayMinhPancakeDom.getDomMessages()` → `dom-messages-result` (heuristic scrape; calibrate on live Pancake).
 
 ## Ownership
 

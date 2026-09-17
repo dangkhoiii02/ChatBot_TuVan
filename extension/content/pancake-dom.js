@@ -62,6 +62,19 @@
   /**
    * [sure] Prefer URL — Pancake / pages.fm often encode ids in path, hash, or query.
    */
+  /** Pancake conv ids are often `pageId_senderId` (digits/underscores). */
+  function looksLikeConversationId(value) {
+    if (!value || typeof value !== 'string') return false;
+    const v = value.trim();
+    if (v.length < 6 || v.length > 200) return false;
+    if (!/^[A-Za-z0-9_.\-]+$/.test(v)) return false;
+    // Prefer page_sender style or long numeric / spo_…
+    if (/^\d+_\d+$/.test(v)) return true;
+    if (/^spo_\d+_\d+$/i.test(v)) return true;
+    if (/^[A-Za-z0-9_-]{8,}$/.test(v)) return true;
+    return false;
+  }
+
   function extractFromUrl(href) {
     const url = href || (typeof location !== 'undefined' ? location.href : '');
     let conversationId = null;
@@ -75,30 +88,99 @@
         q.get('conversationId') ||
         q.get('cid') ||
         q.get('thread_id') ||
+        q.get('selected_id') ||
+        q.get('customer_id') ||
         null;
       pageId = q.get('page_id') || q.get('pageId') || q.get('pid') || null;
 
-      const pathBlob = u.pathname + (u.hash || '');
+      const pathBlob = u.pathname + ' ' + (u.hash || '');
+      const decodedHash = (() => {
+        try {
+          return decodeURIComponent(u.hash || '');
+        } catch (_) {
+          return u.hash || '';
+        }
+      })();
+      const blob = pathBlob + ' ' + decodedHash + ' ' + url;
+
       conversationId =
         conversationId ||
-        firstMatch(/conversations?\/([A-Za-z0-9_-]{6,})/i, pathBlob) ||
-        firstMatch(/\/c\/([A-Za-z0-9_-]{6,})/i, pathBlob) ||
-        firstMatch(/[#&?]conversation[_-]?id=([A-Za-z0-9_-]+)/i, url);
+        firstMatch(/\/pages\/[^\/?#]+\/conversations\/([^\/?#]+)/i, blob) ||
+        firstMatch(/conversations?\/([A-Za-z0-9_.\-]{6,})/i, blob) ||
+        firstMatch(/\/c\/([A-Za-z0-9_.\-]{6,})/i, blob) ||
+        firstMatch(/[#&?/]conversation[_-]?id=([A-Za-z0-9_.\-]+)/i, blob) ||
+        firstMatch(/[#&?/]selected[_-]?id=([A-Za-z0-9_.\-]+)/i, blob);
 
       pageId =
         pageId ||
-        firstMatch(/pages?\/([A-Za-z0-9_-]{6,})/i, pathBlob) ||
-        firstMatch(/[#&?]page[_-]?id=([A-Za-z0-9_-]+)/i, url);
+        firstMatch(/\/pages\/([A-Za-z0-9_.\-]{4,})\/conversations\//i, blob) ||
+        firstMatch(/pages?\/([A-Za-z0-9_.\-]{4,})/i, blob) ||
+        firstMatch(/[#&?/]page[_-]?id=([A-Za-z0-9_.\-]+)/i, blob);
+
+      if (conversationId && !looksLikeConversationId(conversationId)) {
+        conversationId = null;
+      }
     } catch (_) {
       conversationId =
-        firstMatch(/conversations?\/([A-Za-z0-9_-]{6,})/i, url) ||
-        firstMatch(/conversation[_-]?id=([A-Za-z0-9_-]+)/i, url);
+        firstMatch(/\/conversations\/([A-Za-z0-9_.\-]{6,})/i, url) ||
+        firstMatch(/conversation[_-]?id=([A-Za-z0-9_.\-]+)/i, url);
       pageId =
-        firstMatch(/pages?\/([A-Za-z0-9_-]{6,})/i, url) ||
-        firstMatch(/page[_-]?id=([A-Za-z0-9_-]+)/i, url);
+        firstMatch(/\/pages\/([A-Za-z0-9_.\-]{4,})/i, url) ||
+        firstMatch(/page[_-]?id=([A-Za-z0-9_.\-]+)/i, url);
     }
 
     return { conversationId, pageId, url };
+  }
+
+  function extractFromSessionHook() {
+    try {
+      const conversationId = sessionStorage.getItem('thay-minh:conversationId');
+      const pageId = sessionStorage.getItem('thay-minh:pageId');
+      return {
+        conversationId:
+          conversationId && looksLikeConversationId(conversationId)
+            ? conversationId.trim()
+            : null,
+        pageId: pageId && String(pageId).trim() ? String(pageId).trim() : null,
+      };
+    } catch (_) {
+      return { conversationId: null, pageId: null };
+    }
+  }
+
+  function extractFromAnchorsAndAttrs() {
+    let conversationId = null;
+    let pageId = null;
+    const nodes = document.querySelectorAll(
+      'a[href*="conversation"], a[href*="inbox"], [class*="selected" i], [aria-selected="true"], [class*="active" i]'
+    );
+    nodes.forEach((el) => {
+      if (!el || isInsideCopilot(el)) return;
+      if (conversationId) return;
+      const href = el.getAttribute && el.getAttribute('href');
+      if (href) {
+        const fromHref = extractFromUrl(
+          href.startsWith('http') ? href : location.origin + (href.startsWith('/') ? href : '/' + href)
+        );
+        if (fromHref.conversationId) conversationId = fromHref.conversationId;
+        if (fromHref.pageId && !pageId) pageId = fromHref.pageId;
+      }
+      if (!el.getAttributeNames) return;
+      el.getAttributeNames().forEach((name) => {
+        if (conversationId) return;
+        const v = el.getAttribute(name);
+        if (!v) return;
+        if (/conversation|thread|cid|selected/i.test(name) && looksLikeConversationId(v)) {
+          conversationId = v.trim();
+        }
+        if (/^page/i.test(name) && !pageId && v.trim().length >= 4) pageId = v.trim();
+        // Value itself looks like page_sender
+        if (!conversationId && /^\d{5,}_\d{5,}$/.test(v.trim())) {
+          conversationId = v.trim();
+        }
+      });
+    });
+    return { conversationId, pageId };
   }
 
   /**
@@ -225,12 +307,20 @@
    * }}
    */
   function getConversationContext() {
+    const fromHook = extractFromSessionHook();
     const fromUrl = extractFromUrl();
     const fromDom = extractFromDataAttrs();
+    const fromAnchors = extractFromAnchorsAndAttrs();
     const nameGuess = extractStudentNameGuess();
 
-    const conversationId = fromUrl.conversationId || fromDom.conversationId || null;
-    const pageId = fromUrl.pageId || fromDom.pageId || null;
+    const conversationId =
+      fromHook.conversationId ||
+      fromUrl.conversationId ||
+      fromDom.conversationId ||
+      fromAnchors.conversationId ||
+      null;
+    const pageId =
+      fromHook.pageId || fromUrl.pageId || fromDom.pageId || fromAnchors.pageId || null;
     const studentName = fromDom.studentName || nameGuess || null;
 
     return {
@@ -239,16 +329,24 @@
       pageId,
       url: fromUrl.url || (typeof location !== 'undefined' ? location.href : ''),
       sources: {
-        conversationId: fromUrl.conversationId
-          ? 'url[sure]'
-          : fromDom.conversationId
-            ? 'dom-attr[likely]'
-            : 'none',
-        pageId: fromUrl.pageId
-          ? 'url[sure]'
-          : fromDom.pageId
-            ? 'dom-attr[likely]'
-            : 'none',
+        conversationId: fromHook.conversationId
+          ? 'network-hook[sure]'
+          : fromUrl.conversationId
+            ? 'url[sure]'
+            : fromDom.conversationId
+              ? 'dom-attr[likely]'
+              : fromAnchors.conversationId
+                ? 'anchor/attr[guess]'
+                : 'none',
+        pageId: fromHook.pageId
+          ? 'network-hook[sure]'
+          : fromUrl.pageId
+            ? 'url[sure]'
+            : fromDom.pageId
+              ? 'dom-attr[likely]'
+              : fromAnchors.pageId
+                ? 'anchor/attr[guess]'
+                : 'none',
         studentName: fromDom.studentName
           ? 'dom-attr[likely]'
           : nameGuess
@@ -328,7 +426,7 @@
     }
 
     // Lightweight poll as fallback for silent SPA updates
-    const interval = setInterval(emit, 1500);
+    const interval = setInterval(emit, 800);
 
     stopWatcher = () => {
       window.removeEventListener('hashchange', onUrl);

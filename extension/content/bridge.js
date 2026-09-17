@@ -174,6 +174,10 @@
         typeof global.ThayMinhPancakeDom.getConversationContext === 'function'
           ? global.ThayMinhPancakeDom.getConversationContext()
           : {});
+      const hasId = !!(c.conversationId != null && String(c.conversationId).trim());
+      try {
+        console.info('[thay-minh] conversation-context hasId=', hasId);
+      } catch (_) {}
       postToWidget({
         type: 'conversation-context',
         conversationId: c.conversationId != null ? c.conversationId : null,
@@ -282,14 +286,30 @@
     const data = event.data;
     if (!data || typeof data !== 'object') return;
     if (data.source !== HOOK_SOURCE) return;
-    if (data.type !== 'captured-access-token') return;
-    const t = data.accessToken != null ? String(data.accessToken).trim() : '';
-    if (!t) return;
-    const prev = cachedAccessToken;
-    persistToken(t);
-    // Push to widget when new or when we already have a frame
-    if (t !== prev || targetFrame) {
-      pushAccessToken(t);
+
+    if (data.type === 'captured-access-token') {
+      const t = data.accessToken != null ? String(data.accessToken).trim() : '';
+      if (!t) return;
+      const prev = cachedAccessToken;
+      persistToken(t);
+      if (t !== prev || targetFrame) {
+        pushAccessToken(t);
+      }
+      return;
+    }
+
+    if (data.type === 'captured-conversation') {
+      const cid =
+        data.conversationId != null ? String(data.conversationId).trim() : '';
+      if (!cid) return;
+      try {
+        sessionStorage.setItem('thay-minh:conversationId', cid);
+        if (data.pageId) {
+          sessionStorage.setItem('thay-minh:pageId', String(data.pageId));
+        }
+      } catch (_) {}
+      // Force emit even if watcher thinks key unchanged
+      pushConversationContext();
     }
   }
 

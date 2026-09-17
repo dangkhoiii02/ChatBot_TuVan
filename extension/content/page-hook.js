@@ -103,8 +103,59 @@
     }
   }
 
+  function emitConversation(pageId, conversationId) {
+    if (!conversationId || typeof conversationId !== 'string') return;
+    var cid = conversationId.trim();
+    if (cid.length < 3) return;
+    var pid = pageId && typeof pageId === 'string' ? pageId.trim() : '';
+    try {
+      sessionStorage.setItem('thay-minh:conversationId', cid);
+      if (pid) sessionStorage.setItem('thay-minh:pageId', pid);
+    } catch (_) {}
+    try {
+      window.postMessage(
+        {
+          source: HOOK_SOURCE,
+          type: 'captured-conversation',
+          conversationId: cid,
+          pageId: pid || null,
+        },
+        '*'
+      );
+    } catch (_) {}
+  }
+
+  function considerConversationFromUrl(url) {
+    var s = String(url || '');
+    // /pages/{pageId}/conversations/{conversationId}[/messages]
+    var m = s.match(/\/pages\/([^\/?#]+)\/conversations\/([^\/?#]+)/i);
+    if (m) {
+      emitConversation(m[1], decodeURIComponent(m[2]));
+      return;
+    }
+    // /conversations/{id}/messages
+    var m2 = s.match(/\/conversations\/([^\/?#]+)\/(?:messages|tags|assign)/i);
+    if (m2) {
+      emitConversation('', decodeURIComponent(m2[1]));
+      return;
+    }
+    // query conversation_id=
+    try {
+      var u = new URL(s, location.href);
+      var cid =
+        u.searchParams.get('conversation_id') ||
+        u.searchParams.get('conversationId') ||
+        u.searchParams.get('cid');
+      var pid = u.searchParams.get('page_id') || u.searchParams.get('pageId');
+      if (cid) emitConversation(pid || '', cid);
+    } catch (_) {}
+  }
+
   function considerUrl(url) {
-    if (!url || !looksRelevant(url)) return;
+    if (!url) return;
+    // Always try conversation patterns (API may be on pages.fm CDN paths)
+    considerConversationFromUrl(url);
+    if (!looksRelevant(url) && !/access_token=/i.test(String(url))) return;
     var fromUrl = extractTokenFromUrl(url);
     if (fromUrl) emitToken(fromUrl);
   }
