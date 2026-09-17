@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minh Piano Studio — Trợ Lý Phản Hồi Học Viên</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Plus+Jakarta+Sans:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- MINIMAL MASTHEAD -->
+  <header class="app-masthead">
+    <div class="masthead-inner">
+      <div class="brand-cluster">
+        <span class="music-clef">𝄞</span>
+        <div class="brand-titles">
+          <h1 class="brand-name">Minh Piano Studio</h1>
+          <span class="brand-desc">Trợ lý duyệt & soạn thảo phản hồi học viên</span>
+        </div>
+      </div>
+
+      <div class="masthead-actions">
+        <button type="button" class="btn-ghost" id="openSettingsDrawerBtn">
+          <span class="status-dot" id="headerKeyStatusDot"></span>
+          <span>Thiết lập & Tri thức</span>
+          <span class="drawer-icon">☰</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN ATELIER CANVAS -->
+  <main class="main-canvas">
+    <div class="canvas-container">
+
+      <!-- INPUT WORKSPACE -->
+      <section class="composer-card">
+        
+        <!-- SAMPLES QUICK STRIP (LIGHTWEIGHT & SUBTLE) -->
+        <div class="quick-samples-bar">
+          <span class="samples-lead">Tình huống mẫu:</span>
+          <div class="samples-pills" id="samplesPills">
+            <button type="button" class="sample-pill pill-red" data-sample-id="sample_6_cancer_refund_strict_kind">
+              <span class="pill-dot"></span> Bệnh nan y & Hoàn phí
+            </button>
+            <button type="button" class="sample-pill pill-amber" data-sample-id="sample_2_technique_fingering">
+              <span class="pill-dot"></span> Chữa clip vướng phím đen
+            </button>
+            <button type="button" class="sample-pill pill-amber" data-sample-id="sample_3_retention_expiry">
+              <span class="pill-dot"></span> Hết hạn bảo lưu 90 ngày
+            </button>
+            <button type="button" class="sample-pill pill-green" data-sample-id="sample_1_motivation">
+              <span class="pill-dot"></span> Động viên tập đàn 15 phút
+            </button>
+          </div>
+        </div>
+
+        <!-- MESSAGE TEXTAREA -->
+        <div class="composer-input-area">
+          <textarea id="studentMessageInput" class="composer-textarea" rows="4" placeholder="Dán tin nhắn từ học viên hoặc bấm chọn tình huống mẫu phía trên..."></textarea>
+        </div>
+
+        <!-- OPTIONAL CONTEXT TOGGLE (CLEAN ACCORDION) -->
+        <div class="context-collapsible" id="contextCollapsible">
+          <button type="button" class="btn-context-toggle" id="toggleContextBtn">
+            <span class="toggle-glyph">+</span>
+            <span>Ngữ cảnh học viên & Chi tiết ngón đàn (tùy chọn)</span>
+          </button>
+
+          <div class="context-drawer-body hidden" id="contextBody">
+            <div class="context-grid">
+              <div class="context-field">
+                <label for="ctxPronoun">Xưng hô:</label>
+                <select id="ctxPronoun" class="minimal-select">
+                  <option value="thầy - em" selected>Thầy — Em (học viên trẻ / thanh thiếu niên)</option>
+                  <option value="thầy - chị">Thầy — Chị (nữ lớn tuổi)</option>
+                  <option value="thầy - anh">Thầy — Anh (nam lớn tuổi)</option>
+                  <option value="thầy - mình">Thầy — Mình (gần gũi thân mật)</option>
+                </select>
+              </div>
+
+              <div class="context-field">
+                <label for="ctxAudience">Đối tượng:</label>
+                <input type="text" id="ctxAudience" class="minimal-input" placeholder="VD: Nữ lớn tuổi, người đi làm...">
+              </div>
+
+              <div class="context-field">
+                <label for="ctxCurrentIssue">Lỗi ngón / Bệnh hiện tại:</label>
+                <input type="text" id="ctxCurrentIssue" class="minimal-input" placeholder="VD: vướng phím đen 0:03, nhảy nấc cụt...">
+              </div>
+
+              <div class="context-field">
+                <label for="ctxCurrentPrescription">Chỉ định bài tập:</label>
+                <input type="text" id="ctxCurrentPrescription" class="minimal-input" placeholder="VD: đổi xếp ngón 4-5, lặp lại 0:43 - 0:50...">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ACTION BAR -->
+        <div class="composer-action-bar">
+          <button type="button" class="btn-clear" id="clearInputBtn">Xóa trắng</button>
+          
+          <button type="button" class="btn-primary-compose" id="generateRepliesBtn">
+            <span class="btn-spinner hidden" id="loadingSpinner"></span>
+            <span id="generateBtnText">Lắng nghe & Soạn 5 phương án</span>
+            <span class="key-hint">↵</span>
+          </button>
+        </div>
+
+      </section>
+
+      <!-- RESULTS DESK (SHOWN WHEN AI HAS RESPONDED) -->
+      <section class="results-desk hidden" id="resultsDesk">
+        
+        <!-- SENSITIVITY NOTICE (SUBTLE & REFINED) -->
+        <div class="sensitivity-banner" id="sensitivityBanner">
+          <div class="banner-spine"></div>
+          <div class="banner-body">
+            <div class="banner-header">
+              <span class="banner-tag" id="bannerTag">Phân loại</span>
+              <span class="banner-title" id="bannerTitle">Tâm sự thường nhật</span>
+            </div>
+            <p class="banner-desc" id="bannerDesc">...</p>
+          </div>
+        </div>
+
+        <!-- 5 SUGGESTIONS DECK -->
+        <div class="suggestions-container">
+          <div class="suggestions-header">
+            <h2 class="suggestions-title">5 phương án phản hồi</h2>
+            <span class="suggestions-hint">Chọn phương án phù hợp nhất để xem và chỉnh sửa</span>
+          </div>
+
+          <div class="suggestions-stack" id="suggestionsStack">
+            <!-- 5 Options injected dynamically -->
+          </div>
+        </div>
+
+        <!-- FINAL RESPONSE & SEND DESK -->
+        <div class="final-review-card" id="finalReviewCard">
+          <div class="review-header">
+            <div class="review-title-group">
+              <span class="review-label">Phản hồi gửi học viên</span>
+              <span class="review-tone-chip" id="activeToneChip">Phương án 1</span>
+            </div>
+            <span class="review-guide">Có thể tự do chỉnh sửa câu chữ</span>
+          </div>
+
+          <div class="review-editor-wrap">
+            <textarea id="finalEditorTextarea" class="review-textarea" rows="6"></textarea>
+          </div>
+
+          <div class="review-actions-bar">
+            <button type="button" class="btn-outline" id="copyToClipboardBtn">
+              <span>📋</span> Sao chép vào bộ nhớ
+            </button>
+
+            <button type="button" class="btn-confirm-send" id="confirmSendBtn">
+              <span>✓</span> Xác nhận hoàn tất
+            </button>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- EMPTY STATE WELCOME -->
+      <div class="empty-welcome" id="emptyWelcome">
+        <div class="welcome-symbol">♩</div>
+        <h3 class="welcome-heading">Không gian phản hồi êm dịu</h3>
+        <p class="welcome-text">Nhập tin nhắn học viên hoặc bấm chọn một trong các tình huống mẫu ở trên để AI gợi ý 5 phương án theo đúng chất Thầy Minh.</p>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- SLIDE-OVER DRAWER FOR SETTINGS & KNOWLEDGE BASE -->
+  <div class="drawer-backdrop hidden" id="drawerBackdrop">
+    <div class="drawer-panel" id="drawerPanel">
+      <div class="drawer-header">
+        <div class="drawer-title-group">
+          <h2 class="drawer-title">Thiết lập & Tri thức</h2>
+          <span class="drawer-sub">Cấu hình API Key và tài liệu của Thầy Minh</span>
+        </div>
+        <button type="button" class="btn-close-drawer" id="closeDrawerBtn">✕</button>
+      </div>
+
+      <div class="drawer-body">
+        
+        <!-- API KEY SECTION -->
+        <div class="drawer-section">
+          <label class="section-label" for="drawerApiKeyInput">API Key</label>
+          <div class="api-key-input-group">
+            <input type="password" id="drawerApiKeyInput" class="minimal-input font-mono" placeholder="Dán API Key vào đây...">
+            <button type="button" class="btn-mini" id="toggleApiKeyViewBtn">Hiện</button>
+            <button type="button" class="btn-mini-primary" id="saveApiKeyBtn">Lưu</button>
+          </div>
+          <div class="api-key-meta">
+            <div class="model-select-wrap">
+              <span>Mô hình:</span>
+              <input id="drawerModelSelect" class="minimal-input" aria-label="Mã model AI" placeholder="Nhập mã model chính xác">
+              <label>Nhà cung cấp <select id="aiProvider"><option value="auto">Tự nhận diện</option><option value="openai">OpenAI</option><option value="gemini">Gemini</option><option value="anthropic">Claude</option><option value="deepseek">DeepSeek</option><option value="groq">Groq</option><option value="openrouter">OpenRouter</option><option value="mistral">Mistral</option><option value="xai">xAI</option><option value="custom">API tương thích OpenAI</option><option value="mock">Dữ liệu mẫu</option></select></label>
+              <label>Base URL (chỉ cho custom) <input id="aiBaseUrl" type="url" class="minimal-input" placeholder="https://your-provider.example/v1"></label>
+            </div>
+            <span class="key-status-indicator" id="keyStatusIndicator">Chưa có Key</span>
+          </div>
+        </div>
+
+        <div class="drawer-divider"></div>
+
+        <!-- KNOWLEDGE DOCUMENTS (PERSONA, POLICY, RED FLAGS) -->
+        <div class="drawer-section">
+          <div class="docs-section-header">
+            <span class="section-label">Sổ tay tri thức (Nạp cho AI)</span>
+            <span class="docs-status-indicator" id="docSaveIndicator">Đã đồng bộ</span>
+          </div>
+
+          <div class="docs-tab-pills" id="docTabsList">
+            <button type="button" class="doc-pill active" data-file="persona.md">persona.md</button>
+            <button type="button" class="doc-pill" data-file="policy.md">policy.md</button>
+            <button type="button" class="doc-pill" data-file="red_flags.json">red_flags.json</button>
+            <button type="button" class="doc-pill" data-file="few_shots.json">few_shots.json</button>
+          </div>
+
+          <div class="doc-editor-container">
+            <textarea id="drawerDocEditor" class="doc-textarea" spellcheck="false"></textarea>
+          </div>
+
+          <div class="doc-actions-footer">
+            <button type="button" class="btn-mini-primary" id="saveDocumentBtn">
+              💾 Lưu tài liệu & Nạp ngay vào AI
+            </button>
+          </div>
+        </div>
+
+        <div class="drawer-divider"></div>
+
+        <!-- RECENT HISTORY SUMMARY -->
+        <div class="drawer-section">
+          <span class="section-label">Nhật ký phản hồi gần đây</span>
+          <div class="history-mini-list" id="historyMiniList">
+            <div class="history-empty-note">Chưa có phản hồi nào được ghi nhận.</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div class="toast-bubble hidden" id="toastBubble">
+    <span class="toast-symbol" id="toastSymbol">✓</span>
+    <span class="toast-message" id="toastMessage">Thông báo</span>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

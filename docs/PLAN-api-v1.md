@@ -1,9 +1,10 @@
 # Plan luồng trợ lý phản hồi học viên — Mong muốn, AI và BE
 
-- Ngày cập nhật: 15/09/2026.
+- Ngày cập nhật: 16/09/2026.
 - Mục đích: theo dõi yêu cầu, luồng nghiệp vụ và hướng giải quyết; chưa phải đặc tả code.
 - Phạm vi: AI và BE. FE sẽ có tài liệu UI mock riêng.
-- Trạng thái: bản nháp để cùng chốt; chưa triển khai các chức năng dưới đây.
+- Trạng thái: yêu cầu đã được tích hợp vào kế hoạch kỹ thuật; chưa triển khai các chức năng dưới đây. Các lựa chọn chưa được người dùng xác nhận được ghi rõ là mặc định triển khai đề xuất.
+- Không có đăng nhập/đăng ký. Hồ sơ học viên là dữ liệu nghiệp vụ, không phải tài khoản người dùng. Không xây luồng chọn, tải lên hoặc phân tích video; giáo viên nhập nhận xét trực tiếp theo lượt xử lý.
 - Quy ước: **Đã xác nhận** = người dùng đã nêu rõ; **Đề xuất** = hướng xử lý cần thống nhất; **Cần chốt** = chưa có quyết định.
 
 ## 1. Mục tiêu và mong muốn đã xác nhận
@@ -14,20 +15,20 @@ Người thay mặt giáo viên nhắn tin cần biết đang nói chuyện vớ
 | --- | --- | --- |
 | UC-01 | AI lấy thông tin cần thiết từ hội thoại để hiện ở sidebar phải | Gọi người nhận: Chị; người gửi xưng: em; lưu ý optional; ghi chú học tập |
 | UC-02 | Đổi xưng hô nhanh và áp dụng ngay vào các câu gợi ý | Đổi cặp thầy–em thành em–chị |
-| UC-03 | Giáo viên nhập nhận xét khi AI không xem được video; AI soạn các cách nói để chọn | Nhập “đánh sai nhịp” rồi nhận các gợi ý diễn đạt |
+| UC-03 | Giáo viên nhập nhận xét trực tiếp bằng văn bản; AI soạn các cách nói để chọn | Nhập “đánh sai nhịp” rồi nhận các gợi ý diễn đạt |
 | UC-04 | Có thể chủ động lưu nhận xét; AI phân tích có nên lưu và khi nào nên bỏ | Ghi nhớ lỗi thường gặp, rà lại khi có nhận xét mới |
 | UC-05 | Người dùng thêm được field cần theo dõi | Tuổi, tốc độ học |
 | UC-06 | Tách plan FE thành tài liệu UI mock riêng | Mô phỏng các luồng bằng dữ liệu mẫu, chốt giao diện riêng |
 
 “Custom” ở đây bao gồm **thêm field mới**, không chỉ sửa nội dung field có sẵn.
 
-## 2. Hiện trạng làm cơ sở lập plan
+## 2. Đối chiếu hiện trạng và đầu vào thiết kế
 
-- Đã có hội thoại, phân tích ngữ cảnh, các câu gợi ý và thao tác đưa câu vào bản nháp.
-- Luồng hiện tại dùng tối đa 30 tin nhắn gần nhất để tạo gợi ý; chưa có hồ sơ học viên hoặc bộ nhớ học tập lưu lâu dài.
-- AI hiện dùng văn bản, chưa phân tích nội dung video. Nhận attachment không đồng nghĩa đã xem được video.
-- Persona và một số câu mẫu đang dùng xưng hô cố định hoặc khẳng định đã xem bài; cần điều chỉnh khi thực hiện UC-02 và UC-03.
-- Luồng gửi hiện tại là lưu demo. Việc gửi tin thật không thuộc đợt lập plan này.
+- Repository hiện có server demo, form ngữ cảnh và gợi ý; chưa có hồ sơ học viên, bộ nhớ học tập hoặc đồng bộ page/hội thoại bền vững.
+- Giới hạn 30 tin nhắn gần nhất là mặc định thiết kế cho luồng mới, chưa phải chức năng đã được xác minh trong code hiện tại. API cần công bố phạm vi lịch sử thực sự đã đọc.
+- AI chỉ xử lý văn bản và nhận xét giáo viên nhập. Không có chức năng đọc nội dung tệp đính kèm.
+- Persona và câu mẫu có xưng hô cố định hoặc khẳng định đã xem bài; cần điều chỉnh khi triển khai UC-02/UC-03.
+- Lưu demo không phải gửi tin thật; bản mới dùng chọn/sửa/sao chép.
 
 ## 3. UC-01 — Hiểu ngữ cảnh và bàn giao hội thoại
 
@@ -38,7 +39,7 @@ Thông tin ban đầu gồm:
 - Gọi người nhận và người gửi xưng.
 - Lưu ý đặc biệt, nếu có.
 - Ghi chú học tập, gắn với bài học hoặc ngày nhận xét khi xác định được.
-- Việc cần làm tiếp, ví dụ “Chờ giáo viên nhập nhận xét chấm bài”.
+- Việc cần làm tiếp, ví dụ “Chờ giáo viên bổ sung nhận xét”.
 - Các field custom đã được thêm.
 
 **AI:** phân biệt thông tin được nói rõ, nhận định suy ra và thông tin chưa biết; đưa căn cứ từ hội thoại; phân biệt nhận xét của bài cũ với bài hiện tại. Nội dung câu AI vừa gợi ý không tự trở thành sự thật về học viên.
@@ -57,26 +58,24 @@ Ví dụ: “Thầy gửi em hướng dẫn nhé” → “Em gửi chị hướ
 
 **AI:** dùng cặp xưng hô được chọn thay cho mặc định của persona; phân biệt người nói, người nhận và người thứ ba trong câu.
 
-**BE:** lưu lựa chọn theo phạm vi đã chốt; cung cấp nội dung có thể thay đúng phần xưng hô mà không phải gọi AI lại. Mỗi nhóm gợi ý cần gắn với đúng hội thoại và ngữ cảnh đã dùng để tạo.
+**BE:** lưu lựa chọn theo hội thoại theo mặc định đề xuất ở mục 9; cung cấp nội dung có thể thay đúng phần xưng hô mà không phải gọi AI lại. Mỗi nhóm gợi ý cần gắn với đúng hội thoại và ngữ cảnh đã dùng để tạo.
 
-**Đề xuất mở rộng cần chốt:** cập nhật cả bản nháp lấy từ gợi ý, giữ các phần sửa tay và cho hoàn tác. Các tin nhắn đã gửi là lịch sử, không thuộc nội dung thay đổi.
+**Mặc định triển khai đề xuất:** chỉ tự cập nhật các gợi ý; bản nháp đã sửa tay giữ nguyên. Người dùng chủ động dùng lại gợi ý mới để thay bản nháp và có hoàn tác. Các tin nhắn đã gửi là lịch sử, không thuộc nội dung thay đổi.
 
 **Tiêu chí đạt:** đổi xưng hô cập nhật đúng vai nói/nghe trong các gợi ý, không đổi nhầm lời trích dẫn hoặc người thứ ba.
 
 ## 5. UC-03 — Giáo viên cung cấp nhận xét để AI soạn lời
 
-**Luồng đề xuất:** mở khung “Chấm bài” → giáo viên nhập nhận xét tự do bằng text → AI tạo các cách diễn đạt → người dùng chọn hoặc sửa → đưa vào bản nháp.
-
-Không có bước chọn bài/video trong luồng chính. Nếu giáo viên muốn nhắc tới bài, đoạn hoặc video cụ thể thì nhập trực tiếp trong ô text, ví dụ “bài này sai nhịp ở đoạn điệp khúc”.
+**Luồng đề xuất:** mở đúng hội thoại → nhập nhận xét cho lượt xử lý hiện tại → AI tạo 3 cách diễn đạt → người dùng chọn hoặc sửa → đưa vào bản nháp. Khi chưa có nhận xét, hiển thị “Chờ giáo viên nhận xét”. Không có bước chọn bài/video hoặc yêu cầu tệp đính kèm.
 
 Đầu vào tối thiểu: nhận xét tự do, ví dụ “Sai nhịp”.
-Đầu vào bổ sung optional nằm ngay trong text giáo viên nhập: điểm làm tốt, đoạn cần sửa, hướng dẫn tập hoặc điều cần tránh.
+Đầu vào bổ sung optional: điểm làm tốt, đoạn cần sửa, hướng dẫn tập hoặc điều cần tránh.
 
-**AI:** diễn đạt đúng ý giáo viên với các giọng văn khác nhau. Nếu chỉ có “Sai nhịp”, không tự thêm sai ngón, mốc thời gian, mức tiến bộ hay khẳng định đã xem clip. Đề xuất ban đầu là 3 phương án cùng dữ kiện từ text giáo viên nhập.
+**AI:** diễn đạt đúng ý giáo viên với các giọng văn khác nhau. Nếu chỉ có “Sai nhịp”, không tự thêm sai ngón, mốc thời gian, mức tiến bộ hay khẳng định đã xem clip. Đề xuất ban đầu là 3 phương án cùng dữ kiện.
 
-**BE:** gắn nhận xét với đúng hội thoại và lượt tạo gợi ý; truyền riêng text giáo viên nhập và ngữ cảnh hội thoại; giữ được đầu vào để sửa hoặc tạo lại. Không bắt buộc có bài/video được chọn. Không tái dùng nhận xét cũ như kết quả chấm bài mới.
+**BE:** gắn nhận xét với đúng học viên, hội thoại và lượt nhận xét (review_context_id); truyền riêng ý kiến giáo viên và ngữ cảnh hội thoại; giữ được đầu vào để sửa hoặc tạo lại. Không tái dùng nhận xét bài cũ như kết quả chấm bài mới.
 
-**Khi thiếu đầu vào:** chỉ gợi ý lời tiếp nhận bài hoặc nhắc giáo viên nhập nhận xét, chưa đưa nhận xét chuyên môn. Quy tắc này áp dụng cả khi AI lỗi và hệ thống dùng câu mẫu thay thế.
+**Khi thiếu đầu vào:** chỉ gợi ý lời tiếp nhận bài hoặc chờ giáo viên, chưa đưa nhận xét chuyên môn về bài học. Quy tắc này áp dụng cả khi AI lỗi và hệ thống dùng câu mẫu thay thế.
 
 **Tiêu chí đạt:** người dùng nhập ngắn vẫn nhận được các cách nói phù hợp, thống nhất nội dung chuyên môn và đúng xưng hô.
 
@@ -97,7 +96,7 @@ Không có bước chọn bài/video trong luồng chính. Nếu giáo viên mu�
 
 **BE:** lưu nhận xét gốc, nguồn, lịch sử thay đổi, trạng thái còn áp dụng và mốc rà lại; phân biệt hết hiệu lực, lưu lịch sử và xoá hẳn. Sau khi bỏ khỏi ngữ cảnh hiện tại, thông tin không tiếp tục được dùng như một lưu ý đang có hiệu lực.
 
-**Cần chốt:** AI chỉ đề xuất hay được tự lưu/xoá; ghi chú do người dùng lưu có được tự bỏ không; khi nào xoá hẳn. Phương án đang đề xuất là người dùng quyết định thao tác xoá hẳn.
+**Mặc định triển khai đề xuất:** AI chỉ đề xuất; người dùng xác nhận lưu/cập nhật/bỏ. Ghi chú người dùng đã lưu không bị AI tự ghi đè hoặc xóa. Đến review_at chỉ nhắc rà soát; chỉ ngừng dùng tự động khi có expires_at do người dùng xác nhận. Xóa hẳn là thao tác riêng cần xác nhận rõ, không phải kết quả tự động của AI.
 
 **Tiêu chí đạt:** chủ động lưu và mở lại được; AI giải thích đề xuất; ghi chú hết hiệu lực không làm sai câu trả lời mới.
 
@@ -109,8 +108,8 @@ Các lựa chọn thiết kế đề xuất:
 
 - Dạng giá trị: số, văn bản hoặc danh sách lựa chọn.
 - Cách điền: nhập tay, lấy dữ kiện rõ từ hội thoại hoặc AI đánh giá theo tiêu chí.
-- Phạm vi: riêng học viên này hoặc mẫu dùng chung; chưa chốt.
-- Có dùng khi soạn gợi ý hay chỉ để người trực tham khảo; chưa chốt.
+- Phạm vi mặc định đề xuất: riêng học viên này; mẫu dùng chung để giai đoạn sau.
+- Có dùng khi soạn gợi ý hay chỉ tham khảo: mặc định chỉ tham khảo (use_in_generation=false), người dùng có thể bật.
 
 | Field | Cách xử lý AI | Dữ liệu BE cần giữ |
 | --- | --- | --- |
@@ -133,9 +132,9 @@ Các ô dưới đây là công việc lập plan; chưa đánh dấu triển kh
 | --- | --- | --- | --- |
 | UC-01 | Quy tắc trích xuất, căn cứ, việc cần làm | Phạm vi hồ sơ, lịch sử, nguồn dữ liệu | Đang lập plan |
 | UC-02 | Xưng hô ưu tiên và phân biệt vai trong câu | Lưu lựa chọn, dữ liệu cho đổi tức thì | Đang lập plan |
-| UC-03 | Dùng text giáo viên nhập, đa dạng lời nói, xử lý thiếu input | Gắn hội thoại với nhận xét và lượt gợi ý | Đang lập plan |
-| UC-04 | Đề xuất lưu/cập nhật/bỏ có lý do | Vòng đời ghi chú và quyền áp dụng | Cần chốt quyền tự động |
-| UC-05 | Dữ kiện so với đánh giá theo tiêu chí | Định nghĩa field, giá trị, phạm vi | Cần chốt phạm vi |
+| UC-03 | Dùng ý giáo viên, đa dạng lời nói, xử lý thiếu input | Gắn hội thoại, lượt nhận xét và lượt gợi ý | Đang lập plan |
+| UC-04 | Đề xuất lưu/cập nhật/bỏ có lý do | Vòng đời ghi chú và quyền áp dụng | Mặc định AI đề xuất, người dùng xác nhận |
+| UC-05 | Dữ kiện so với đánh giá theo tiêu chí | Định nghĩa field, giá trị, phạm vi | Mặc định field riêng từng học viên |
 | UC-06 | Cung cấp ví dụ đầu ra thành công/thiếu dữ kiện/lỗi | Cung cấp trạng thái lưu/cập nhật/xung đột | Chuyển sang plan UI mock riêng |
 
 ### Trách nhiệm chung đề xuất cho BE
@@ -146,20 +145,21 @@ Các ô dưới đây là công việc lập plan; chưa đánh dấu triển kh
 - Khi lỗi lấy dữ liệu, gọi AI hoặc lưu: giữ đầu vào người dùng, báo đúng phần thất bại và cho thử lại; không báo đã lưu khi chưa lưu được.
 - Trả thông tin nghiệp vụ đủ cho UI mock; lựa chọn công nghệ lưu trữ và đặc tả API để ở bước kỹ thuật sau.
 
-## 9. Các quyết định cần chốt tiếp
+## 9. Mặc định triển khai đề xuất cho các điểm còn mở
 
-- [ ] Hồ sơ nhớ theo học viên trong từng page hay theo từng hội thoại; xử lý người nhắn là phụ huynh thế nào.
-- [ ] Field custom áp dụng riêng hay có mẫu chung; ai được sửa mẫu chung.
-- [ ] Field nào chỉ tham khảo, field nào được dùng để soạn gợi ý.
-- [ ] Đổi xưng hô có cập nhật bản nháp đã sửa tay không; hành vi hoàn tác.
-- [ ] AI được tự lưu/cập nhật/bỏ ở mức nào; khác biệt với ghi chú người dùng lưu.
-- [ ] Quy tắc hết hiệu lực, lưu lịch sử và xoá hẳn.
-- [ ] Tiêu chí đánh giá field suy luận như tốc độ học.
-- [ ] Xưng hô lưu cho hội thoại/học viên hay phụ thuộc người đang đại diện trả lời.
+Các lựa chọn dưới đây giúp triển khai thống nhất, không được ghi là người dùng đã xác nhận từng chi tiết:
+
+- Hồ sơ học viên giới hạn trong workspace/page; conversation có người đang nhắn và quan hệ với học viên riêng. Không gộp theo tên. Nếu phụ huynh có nhiều con, người dùng chỉ định học viên đang xử lý; chưa rõ thì không đọc/ghi ghi chú của một em bất kỳ.
+- Bản đầu tạo field riêng từng học viên; mẫu dùng chung để giai đoạn sau. Kiểu text/number/select; use_in_generation mặc định false, người dùng bật khi cần.
+- Người dùng chọn xưng hô; lưu theo hội thoại, hiển thị để kiểm tra khi đổi người đại diện trả lời. Không tự suy tuổi từ “chị/em”.
+- Đổi xưng hô cập nhật các gợi ý bằng token vai nói/nghe, không gọi AI lại. Bản nháp đã sửa tay giữ nguyên; thay bằng gợi ý mới phải do người dùng bấm và có hoàn tác. Không sửa tin lịch sử.
+- AI chỉ đề xuất cập nhật hồ sơ/ghi chú/field. Áp dụng cần xác nhận và kiểm tra revision; giữ nội dung người dùng đã sửa khi có mâu thuẫn.
+- review_at là mốc nhắc xem lại; expires_at là mốc hết hiệu lực đã xác nhận. Không suy “đã sửa lỗi” chỉ vì lỗi không được nhắc gần đây. Archive, expire và xóa hẳn là các trạng thái/thao tác khác nhau.
+- Field suy luận như tốc độ học cần tiêu chí, khoảng đánh giá và căn cứ trước khi AI đề xuất; thiếu thì hiển thị chưa đủ dữ kiện.
 
 ## 10. Đầu vào cho plan FE/UI mock riêng
 
-Tên tài liệu dự kiến: `PLAN_UI_MOCK_TRO_LY_HOC_VIEN.md`; chưa tạo trong phạm vi tài liệu này.
+Tài liệu riêng: [PLAN_UI_MOCK_TRO_LY_HOC_VIEN.md](PLAN_UI_MOCK_TRO_LY_HOC_VIEN.md). Đây là kế hoạch/mock states, chưa phải UI đã triển khai.
 
 Plan UI mock sẽ tham chiếu UC-01 đến UC-05 và mô phỏng:
 
@@ -180,4 +180,4 @@ Yêu cầu responsive chuyển sang plan UI: kiểm tra desktop 1366/1440/1536/1
 2. Duyệt bộ ví dụ đầu vào/đầu ra cho từng UC, gồm cả tình huống thiếu dữ kiện và lỗi.
 3. Hoàn thiện trách nhiệm AI và BE theo các quyết định đã chốt.
 4. Lập tài liệu UI mock riêng để duyệt luồng trên màn hình.
-5. Khi có yêu cầu triển khai mới lập kế hoạch kỹ thuật và patch code.
+5. Triển khai theo [kế hoạch server](ke-hoach-xay-dung-bot-thay-minh.md) và [prompt Gemini](docs/PROMPT-GEMINI-TRIEN-KHAI.md) khi bắt đầu bước viết code. Lần cập nhật tài liệu này không thay đổi code chạy.

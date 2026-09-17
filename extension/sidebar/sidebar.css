@@ -1,0 +1,203 @@
+/* Thầy Minh Copilot — fluid shell (fills floating panel; E-resize) */
+
+:root {
+  --tm-bg: #0f172a;
+  --tm-bg-elevated: #1e293b;
+  --tm-border: rgba(148, 163, 184, 0.28);
+  --tm-text: #e2e8f0;
+  --tm-muted: #94a3b8;
+  --tm-accent: #38bdf8;
+  --tm-accent-soft: rgba(56, 189, 248, 0.15);
+  --tm-radius: 10px;
+  --tm-font: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--tm-bg);
+  color: var(--tm-text);
+  font-family: var(--tm-font);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  max-width: none;
+}
+
+.shell-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--tm-border);
+  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+}
+
+.shell-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--tm-accent-soft);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: var(--tm-accent);
+  font-size: 12px;
+}
+
+.shell-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.shell-title h1 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.shell-title p {
+  margin: 2px 0 0;
+  color: var(--tm-muted);
+  font-size: 11px;
+}
+
+.shell-body {
+  flex: 1 1 auto;
+  position: relative;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#widget-frame {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  background: var(--tm-bg);
+}
+
+.waiting {
+  position: absolute;
+  inset: 0;
+  display: none;
+  pointer-events: none;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+  background: var(--tm-bg);
+  z-index: 2;
+}
+
+.waiting.visible {
+  display: flex;
+  pointer-events: auto;
+}
+
+.waiting h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.waiting p {
+  margin: 0;
+  color: var(--tm-muted);
+  font-size: 12px;
+}
+
+.waiting label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--tm-muted);
+}
+
+.waiting input {
+  border: 1px solid var(--tm-border);
+  background: var(--tm-bg-elevated);
+  color: var(--tm-text);
+  border-radius: var(--tm-radius);
+  padding: 8px 10px;
+  font: inherit;
+}
+
+.waiting-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.waiting button {
+  border: 1px solid var(--tm-border);
+  background: var(--tm-bg-elevated);
+  color: var(--tm-text);
+  border-radius: var(--tm-radius);
+  padding: 8px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.waiting button.primary {
+  background: var(--tm-accent-soft);
+  border-color: rgba(56, 189, 248, 0.45);
+  color: var(--tm-accent);
+}
+
+.waiting button:hover {
+  filter: brightness(1.08);
+}
+
+.shell-footer {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--tm-border);
+  padding: 10px 12px;
+  background: #0b1220;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.shell-footer .hint {
+  color: var(--tm-muted);
+  font-size: 11px;
+}
+
+.shell-footer .pill {
+  border: 1px dashed rgba(56, 189, 248, 0.4);
+  color: var(--tm-accent);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0.85;
+  /* Visual only in X1 — real fill-composer is X2 */
+  pointer-events: none;
+  user-select: none;
+}

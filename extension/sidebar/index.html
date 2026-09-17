@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Thầy Minh Copilot</title>
+  <link rel="stylesheet" href="sidebar.css" />
+</head>
+<body>
+  <div class="shell">
+    <header class="shell-header">
+      <div class="shell-logo" aria-hidden="true">TM</div>
+      <div class="shell-title">
+        <h1>Thầy Minh Copilot</h1>
+        <p>Pancake AI · floating panel</p>
+      </div>
+    </header>
+
+    <div class="shell-body">
+      <div id="waiting" class="waiting visible" role="status">
+        <h2>Đang chờ widget…</h2>
+        <p>
+          Mặc định tải <strong>widget đã pack</strong> trong extension (<code>widget/index.html</code>).
+          Dev: có thể trỏ Vite <code>http://127.0.0.1:5174</code> (lưu <code>chrome.storage.sync.widgetUrl</code>).
+        </p>
+        <label>
+          Widget URL
+          <input id="widget-url-input" type="url" spellcheck="false" placeholder="packed hoặc http://127.0.0.1:5174" />
+        </label>
+        <div class="waiting-actions">
+          <button type="button" class="primary" id="btn-save-reload">Lưu &amp; tải lại</button>
+          <button type="button" id="btn-retry">Thử lại</button>
+        </div>
+      </div>
+      <iframe
+        id="widget-frame"
+        title="ChatBot TuVan Widget"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+      ></iframe>
+    </div>
+
+    <footer class="shell-footer">
+      <span class="hint">X2: fill-composer qua widget footer</span>
+      <span class="pill" title="Handled by widget → bridge">Đổ vào ô soạn</span>
+    </footer>
+  </div>
+
+  <script src="sidebar.js"></script>
+
+</body>
+</html>

@@ -11,20 +11,24 @@
 storage/*.db
 storage/*.db-wal
 storage/*.db-shm
-
 # Backup and restore directories
 backups/
 restore_test/
-
 # Logs and temp files
 *.log
 logs/
 tmp/
 temp/
-
 # OS specific
 .DS_Store
 Thumbs.db
-
 # Dependencies
 node_modules/
+dist/
+# Local runtime data
+backend/data/*.jsonl
+# Build caches
+.vite/
+coverage/
+# SQLite runtime data (contains chat history)
+storage/*.db-*
