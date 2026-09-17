@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Header } from './components/Header';
 import { StudentCard } from './components/StudentCard';
 import { ContextStrip } from './components/ContextStrip';
@@ -69,49 +69,73 @@ export default function App() {
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [usingMock, setUsingMock] = useState(true);
 
+  const hasSessionRef = useRef(hasSession);
+  const conversationIdRef = useRef(conversationId);
+  const pageIdRef = useRef(pageId);
+  useEffect(() => {
+    hasSessionRef.current = hasSession;
+  }, [hasSession]);
+  useEffect(() => {
+    conversationIdRef.current = conversationId;
+  }, [conversationId]);
+  useEffect(() => {
+    pageIdRef.current = pageId;
+  }, [pageId]);
+
   const student = useMemo(
     () => ({ ...MOCK_STUDENT, name: studentName }),
     [studentName],
   );
 
   const loadSuggestionsFromApi = useCallback(async () => {
-    if (!hasSession) {
-      setApiStatus('Cần login trước');
+    const sessionOk = hasSessionRef.current;
+    const convId = conversationIdRef.current;
+    const pgId = pageIdRef.current;
+
+    // Always flip UI first so click never looks like a no-op.
+    setLoadingSuggestions(true);
+    setApiStatus('Đang lấy… (click nhận)');
+
+    if (!sessionOk) {
+      setLoadingSuggestions(false);
+      setApiStatus('Cần login trước khi tạo gợi ý');
       return;
     }
-    if (!conversationId) {
-      setApiStatus('Chưa có conversationId từ bridge');
+    if (!convId) {
+      setLoadingSuggestions(false);
+      setApiStatus('Chưa có conversationId từ bridge — mở đúng hội thoại Pancake');
       return;
     }
 
-    setLoadingSuggestions(true);
-    setApiStatus('Đang lấy messages + gợi ý…');
+    setApiStatus(`Đang lấy messages (A)… conv=${convId.slice(0, 8)}…`);
     try {
       let messages: ApiChatMessage[] = [];
       let source: 'api' | 'dom' = 'api';
       try {
-        messages = await getConversationMessages(conversationId, pageId);
+        messages = await getConversationMessages(convId, pgId);
         if (!messages.length) throw new Error('API messages empty');
+        setApiStatus(`A OK · ${messages.length} msg → suggestions…`);
       } catch (errA) {
         source = 'dom';
         setApiStatus(`A fail → DOM (${errA instanceof Error ? errA.message : 'error'})`);
         const domMessages = await requestDomMessagesFromHost();
         messages = domMessages.map((m) => ({
           id: m.id,
-          conversationId,
+          conversationId: convId,
           sender: m.sender,
           senderName: m.senderName,
           text: m.text,
           createdAt: m.createdAt,
         }));
         if (!messages.length) throw new Error('DOM messages empty');
+        setApiStatus(`B DOM OK · ${messages.length} msg → suggestions…`);
       }
 
       const result = await createSuggestions({
-        conversationId,
+        conversationId: convId,
         messages: messages.map((m) => ({
           id: m.id,
-          conversationId,
+          conversationId: convId,
           sender: m.sender,
           senderName: m.senderName,
           text: m.text,
@@ -129,12 +153,11 @@ export default function App() {
       setApiStatus(`OK (${source}) · ${messages.length} msg · ${next.length} gợi ý`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'error';
-      // Keep current list; surface error instead of silent mock swap.
       setApiStatus(`Lỗi gợi ý: ${message}`);
     } finally {
       setLoadingSuggestions(false);
     }
-  }, [conversationId, hasSession, pageId, pronouns]);
+  }, [pronouns]);
 
   useEffect(() => {
     emitWidgetReady();
@@ -250,23 +273,12 @@ export default function App() {
               <button
                 type="button"
                 className="btn-refresh-suggestions"
-                disabled={loadingSuggestions || !hasSession || !conversationId}
-                title={
-                  !hasSession
-                    ? 'Cần login trước'
-                    : !conversationId
-                      ? 'Chưa có conversationId từ bridge'
-                      : 'Tạo gợi ý từ hội thoại (A BE → B DOM)'
-                }
+                disabled={loadingSuggestions}
+                title="Tạo gợi ý từ hội thoại (A BE → B DOM)"
                 onClick={() => {
-                  if (!hasSession) {
-                    setApiStatus('Cần login trước khi tạo gợi ý');
-                    return;
-                  }
-                  if (!conversationId) {
-                    setApiStatus('Chưa có conversationId từ bridge — mở đúng hội thoại Pancake');
-                    return;
-                  }
+                  // Sync UI in the same click tick before any await.
+                  setLoadingSuggestions(true);
+                  setApiStatus('Đang lấy… (click)');
                   void loadSuggestionsFromApi();
                 }}
               >
