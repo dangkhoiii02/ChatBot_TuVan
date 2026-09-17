@@ -14,8 +14,8 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PANCAKE_BASE_URL: z.string().url().default('https://pages.fm/api'),
   PANCAKE_PAGE_ID: z.string().optional().default(''),
-  PANCAKE_ACCESS_TOKEN: z.string().optional().default(''),
   PANCAKE_PAGE_ACCESS_TOKEN: z.string().optional().default(''),
+  PANCAKE_ACTIVE_USER_IDS: z.string().optional().default(''),
   PANCAKE_CONVERSATION_LIMIT: z.coerce.number().int().positive().max(50).default(30),
   PANCAKE_MESSAGE_LIMIT: z.coerce.number().int().positive().max(50).default(30),
   AI_PROVIDER: z.enum(['mock', 'claude', 'gemini']).default('mock'),
@@ -33,17 +33,26 @@ function resolveBackendPath(input: string) {
   return path.resolve(backendRoot, input);
 }
 
+function parseActiveUserIds(raw: string): Set<string> {
+  return new Set(
+    raw
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean)
+  );
+}
+
 export const config = {
   port: env.PORT,
   nodeEnv: env.NODE_ENV,
   pancake: {
     baseUrl: env.PANCAKE_BASE_URL.replace(/\/$/, ''),
     pageId: env.PANCAKE_PAGE_ID,
-    accessToken: env.PANCAKE_ACCESS_TOKEN,
     pageAccessToken: env.PANCAKE_PAGE_ACCESS_TOKEN,
     conversationLimit: env.PANCAKE_CONVERSATION_LIMIT,
     messageLimit: env.PANCAKE_MESSAGE_LIMIT
   },
+  activeUserIds: parseActiveUserIds(env.PANCAKE_ACTIVE_USER_IDS),
   ai: {
     provider: env.AI_PROVIDER,
     anthropicApiKey: env.ANTHROPIC_API_KEY,
@@ -55,11 +64,14 @@ export const config = {
 };
 
 export function isPancakeConfigured() {
-  return Boolean(config.pancake.pageAccessToken || config.pancake.accessToken);
+  return Boolean(config.pancake.pageAccessToken && config.pancake.pageId);
 }
 
 export function getPancakeAuthMode() {
   if (config.pancake.pageAccessToken) return 'page_access_token';
-  if (config.pancake.accessToken) return 'access_token';
   return 'missing';
+}
+
+export function isActiveUserId(userId: string) {
+  return config.activeUserIds.has(userId);
 }

@@ -1,4 +1,5 @@
 import express from 'express';
+import { requireActiveUser } from './middleware/requireActiveUser.js';
 import { demoRepliesRouter } from './routes/demoReplies.routes.js';
 import { conversationsRouter } from './routes/conversations.routes.js';
 import { healthRouter } from './routes/health.routes.js';
@@ -12,10 +13,12 @@ export function createApp() {
   app.use(express.json({ limit: '1mb' }));
 
   app.use('/api/health', healthRouter);
-  app.use('/api/pages', pagesRouter);
-  app.use('/api/conversations', conversationsRouter);
-  app.use('/api/suggestions', suggestionsRouter);
-  app.use('/api/demo-replies', demoRepliesRouter);
+
+  // Staff APIs: require X-User-Id in PANCAKE_ACTIVE_USER_IDS
+  app.use('/api/pages', requireActiveUser, pagesRouter);
+  app.use('/api/conversations', requireActiveUser, conversationsRouter);
+  app.use('/api/suggestions', requireActiveUser, suggestionsRouter);
+  app.use('/api/demo-replies', requireActiveUser, demoRepliesRouter);
 
   app.use((_req, _res, next) => {
     next(new HttpError(404, 'Route not found'));

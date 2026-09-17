@@ -16,46 +16,9 @@ type ListMessagesInput = {
 };
 
 const REQUEST_TIMEOUT_MS = 12_000;
-const PAGES_CACHE_TTL_MS = 5 * 60 * 1000;
 const cachedPageAccessTokens = new Map<string, string>();
-let cachedPagesResponse: { value: unknown; expiresAt: number } | null = null;
-let inflightPagesRequest: Promise<unknown> | null = null;
 
 export const pancakeClient = {
-  async listPages() {
-    assertPancakeAccessTokenConfigured();
-
-    const now = Date.now();
-    if (cachedPagesResponse && cachedPagesResponse.expiresAt > now) {
-      return cachedPagesResponse.value;
-    }
-
-    if (inflightPagesRequest) return inflightPagesRequest;
-
-    inflightPagesRequest = requestPancakeUser('/v1/pages', {
-      access_token: config.pancake.accessToken
-    })
-      .then((value) => {
-        cachedPagesResponse = {
-          value,
-          expiresAt: Date.now() + PAGES_CACHE_TTL_MS
-        };
-        return value;
-      })
-      .catch((error) => {
-        if (cachedPagesResponse && isTooManyRequestsError(error)) {
-          return cachedPagesResponse.value;
-        }
-
-        throw error;
-      })
-      .finally(() => {
-        inflightPagesRequest = null;
-      });
-
-    return inflightPagesRequest;
-  },
-
   async listConversations(input: ListConversationsInput) {
     const pageId = resolvePageId(input.pageId);
 
@@ -80,35 +43,18 @@ export const pancakeClient = {
   }
 };
 
-async function requestPancakeUser(pathname: string, params: Record<string, string | undefined>) {
-  const url = buildPancakeUrl(pathname, params);
-  return requestPancake(url);
-}
-
 async function requestPancakePage(
   pageId: string,
   pathname: string,
   params: Record<string, string | undefined>
 ) {
-  let pageAccessToken = await getPageAccessToken(pageId);
-  let url = buildPancakeUrl(pathname, {
+  const pageAccessToken = getPageAccessToken(pageId);
+  const url = buildPancakeUrl(pathname, {
     ...params,
     page_access_token: pageAccessToken
   });
 
-  try {
-    return await requestPancake(url);
-  } catch (error) {
-    if (!canRetryWithGeneratedPageToken(error)) throw error;
-
-    pageAccessToken = await generatePageAccessToken(pageId, config.pancake.accessToken);
-    url = buildPancakeUrl(pathname, {
-      ...params,
-      page_access_token: pageAccessToken
-    });
-
-    return requestPancake(url);
-  }
+  return requestPancake(url);
 }
 
 function buildPancakeUrl(pathname: string, params: Record<string, string | undefined>) {
@@ -183,74 +129,29 @@ function assertPancakeConfigured() {
   if (!isPancakeConfigured()) {
     throw new HttpError(
       503,
-      'Missing Pancake token in backend environment',
+      'Missing PANCAKE_PAGE_ACCESS_TOKEN and/or PANCAKE_PAGE_ID in backend environment',
       'PANCAKE_NOT_CONFIGURED'
     );
   }
 }
 
-function assertPancakeAccessTokenConfigured() {
-  if (!config.pancake.accessToken) {
-    throw new HttpError(
-      503,
-      'Missing PANCAKE_ACCESS_TOKEN to list Pancake pages',
-      'PANCAKE_ACCESS_TOKEN_MISSING'
-    );
-  }
-}
-
-async function getPageAccessToken(pageId: string) {
+/** Only env page token — no generate from user access_token. */
+function getPageAccessToken(pageId: string) {
   assertPancakeConfigured();
 
   const cachedToken = cachedPageAccessTokens.get(pageId);
   if (cachedToken) return cachedToken;
 
-  if (config.pancake.pageAccessToken && config.pancake.pageId && pageId === config.pancake.pageId) {
-    cachedPageAccessTokens.set(pageId, config.pancake.pageAccessToken);
-    return config.pancake.pageAccessToken;
-  }
-
-  return generatePageAccessToken(pageId, config.pancake.accessToken);
-}
-
-async function generatePageAccessToken(pageId: string, accessToken: string) {
-  if (!accessToken) {
+  if (config.pancake.pageId && pageId !== config.pancake.pageId) {
     throw new HttpError(
       503,
-      'Missing PANCAKE_ACCESS_TOKEN to generate page_access_token',
-      'PANCAKE_ACCESS_TOKEN_MISSING'
+      'Single-page mode: only PANCAKE_PAGE_ID is supported',
+      'PANCAKE_SINGLE_PAGE_ONLY'
     );
   }
 
-  const url = buildPancakeUrl(`/v1/pages/${pageId}/generate_page_access_token`, {
-    access_token: accessToken
-  });
-
-  const body = await requestPancake(url, 'POST');
-  const generatedToken = findPageAccessToken(body);
-
-  if (!generatedToken) {
-    throw new HttpError(
-      502,
-      'Pancake did not return a page_access_token',
-      'PANCAKE_PAGE_TOKEN_NOT_FOUND'
-    );
-  }
-
-  cachedPageAccessTokens.set(pageId, generatedToken);
-  return generatedToken;
-}
-
-function canRetryWithGeneratedPageToken(error: unknown) {
-  if (!(error instanceof HttpError)) return false;
-  if (error.code !== 'PANCAKE_API_ERROR') return false;
-  if (!/invalid access_token/i.test(error.message)) return false;
-  return Boolean(config.pancake.accessToken);
-}
-
-function isTooManyRequestsError(error: unknown) {
-  if (!(error instanceof HttpError)) return false;
-  return error.statusCode === 429 || /too many requests/i.test(error.message);
+  cachedPageAccessTokens.set(pageId, config.pancake.pageAccessToken);
+  return config.pancake.pageAccessToken;
 }
 
 function parseJson(text: string) {
@@ -284,21 +185,4 @@ function isPancakeBusinessError(body: unknown) {
 
   const record = body as Record<string, unknown>;
   return record.success === false || Boolean(record.error_code);
-}
-
-function findPageAccessToken(value: unknown): string | undefined {
-  if (!value || typeof value !== 'object') return undefined;
-
-  const record = value as Record<string, unknown>;
-  for (const key of ['page_access_token', 'pageAccessToken', 'access_token']) {
-    const token = record[key];
-    if (typeof token === 'string' && token.trim()) return token;
-  }
-
-  for (const nestedValue of Object.values(record)) {
-    const token = findPageAccessToken(nestedValue);
-    if (token) return token;
-  }
-
-  return undefined;
 }
