@@ -26,6 +26,7 @@ import {
   getPages,
   saveDemoReply
 } from './services/api';
+import { getStaffUserId, setStaffUserId } from './lib/userId';
 
 const CONVERSATION_LIMIT = 30;
 const MESSAGE_LIMIT = 30;
@@ -45,6 +46,7 @@ export const App: React.FC = () => {
   const [isLoadingMessages, setIsLoadingMessages] = useState<boolean>(false);
   const [isSendingDemo, setIsSendingDemo] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [staffUserIdInput, setStaffUserIdInput] = useState<string>(() => getStaffUserId());
   const [isMockMode, setIsMockMode] = useState<boolean>(true);
   const hasLoadedPagesRef = useRef(false);
 
@@ -705,6 +707,13 @@ export const App: React.FC = () => {
     }
   }, [currentPronouns, health?.pancakeConfigured, isGenerating, selectedConversation]);
 
+
+  const applyStaffUserId = useCallback(() => {
+    setStaffUserId(staffUserIdInput);
+    setErrorMessage('');
+  }, [staffUserIdInput]);
+
+
   return (
     <div className="app-container">
       <header className="app-navbar">
@@ -737,6 +746,26 @@ export const App: React.FC = () => {
           </button>
           <span className="badge-status-pill">{conversations.length} hội thoại</span>
           {health && <span className="badge-status-pill">AI: {health.aiProvider}</span>}
+
+          <label className="badge-status-pill staff-user-id" title="Phase 1: X-User-Id (UUID trong PANCAKE_ACTIVE_USER_IDS)">
+            <span>User ID</span>
+            <input
+              type="text"
+              value={staffUserIdInput}
+              placeholder="UUID nhân viên"
+              aria-label="X-User-Id"
+              onChange={(e) => setStaffUserIdInput(e.target.value)}
+              onBlur={applyStaffUserId}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  applyStaffUserId();
+                  (e.target as HTMLInputElement).blur();
+                }
+              }}
+            />
+          </label>
+
           {errorMessage && <span className="badge-status-pill badge-error">Lỗi: {errorMessage}</span>}
         </div>
       </header>

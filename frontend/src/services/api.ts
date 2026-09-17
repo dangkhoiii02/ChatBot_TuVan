@@ -1,3 +1,4 @@
+import { getStaffUserId } from '../lib/userId';
 import type {
   BackendChatMessage,
   BackendConversationSummary,
@@ -75,19 +76,37 @@ export async function saveDemoReply(input: {
 }
 
 async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const staffUserId = getStaffUserId();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(init.headers as Record<string, string> | undefined)
+  };
+  // Phase 1: staff APIs require X-User-Id in PANCAKE_ACTIVE_USER_IDS (health may stay public).
+  if (staffUserId) {
+    headers['X-User-Id'] = staffUserId;
+  }
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init.headers || {})
-    }
+    headers
   });
 
   const payload = (await response.json().catch(() => ({}))) as JsonRecord;
 
   if (!response.ok) {
-    const message = typeof payload.error === 'string' ? payload.error : `API error ${response.status}`;
-    throw new Error(message);
+    const code = typeof payload.code === 'string' ? payload.code : '';
+    const message =
+      typeof payload.error === 'string'
+        ? payload.error
+        : `API error ${response.status}`;
+    if (response.status === 403 && (code === 'USER_NOT_ACTIVE' || !staffUserId)) {
+      throw new Error(
+        staffUserId
+          ? `USER_NOT_ACTIVE: ${message}`
+          : 'USER_NOT_ACTIVE: thiếu X-User-Id (set VITE_DEV_USER_ID hoặc ô User ID trên navbar)'
+      );
+    }
+    throw new Error(code ? `${code}: ${message}` : message);
   }
 
   return payload as T;
