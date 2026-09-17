@@ -426,7 +426,7 @@
     }
 
     // Lightweight poll as fallback for silent SPA updates
-    const interval = setInterval(emit, 800);
+    const interval = setInterval(emit, 1500);
 
     stopWatcher = () => {
       window.removeEventListener('hashchange', onUrl);

@@ -25,6 +25,10 @@
   let listening = false;
   /** @type {string|null} */
   let cachedAccessToken = null;
+  /** @type {string} */
+  let lastEmittedContextKey = '';
+  /** @type {ReturnType<typeof setTimeout>|null} */
+  let contextEmitTimer = null;
 
   function isCopilotMessage(data) {
     return data && typeof data === 'object' && data.source === BRIDGE_SOURCE;
@@ -166,7 +170,16 @@
     return null;
   }
 
-  function pushConversationContext(ctx) {
+  function contextKeyOf(c) {
+    return [
+      c && c.conversationId != null ? String(c.conversationId) : '',
+      c && c.pageId != null ? String(c.pageId) : '',
+      c && c.studentName != null ? String(c.studentName) : '',
+    ].join('|');
+  }
+
+  function pushConversationContext(ctx, opts) {
+    const force = !!(opts && opts.force);
     try {
       const c =
         ctx ||
@@ -174,6 +187,11 @@
         typeof global.ThayMinhPancakeDom.getConversationContext === 'function'
           ? global.ThayMinhPancakeDom.getConversationContext()
           : {});
+      const key = contextKeyOf(c);
+      if (!force && key === lastEmittedContextKey) {
+        return;
+      }
+      lastEmittedContextKey = key;
       const hasId = !!(c.conversationId != null && String(c.conversationId).trim());
       try {
         console.info('[thay-minh] conversation-context hasId=', hasId);
@@ -194,6 +212,16 @@
       console.warn('[thay-minh] conversation-context failed:', err);
     }
   }
+
+  /** Debounced emit for noisy network/DOM hooks (avoids widget thrash). */
+  function schedulePushConversationContext() {
+    if (contextEmitTimer) clearTimeout(contextEmitTimer);
+    contextEmitTimer = setTimeout(() => {
+      contextEmitTimer = null;
+      pushConversationContext();
+    }, 400);
+  }
+
 
   function handleDomMessagesRequest(requestId) {
     let result = { ok: false, error: 'pancake-dom-missing' };
@@ -228,7 +256,7 @@
     switch (data.type) {
       case 'widget-ready':
         postToWidget({ type: 'bridge-ready', version: BRIDGE_VERSION });
-        pushConversationContext();
+        pushConversationContext(null, { force: true });
         loadStoredToken((token) => {
           const t =
             token ||
@@ -302,14 +330,18 @@
       const cid =
         data.conversationId != null ? String(data.conversationId).trim() : '';
       if (!cid) return;
+      let prev = '';
       try {
+        prev = sessionStorage.getItem('thay-minh:conversationId') || '';
         sessionStorage.setItem('thay-minh:conversationId', cid);
         if (data.pageId) {
           sessionStorage.setItem('thay-minh:pageId', String(data.pageId));
         }
       } catch (_) {}
-      // Force emit even if watcher thinks key unchanged
-      pushConversationContext();
+      // Only emit when id actually changes (network can repeat same conv)
+      if (cid !== prev) {
+        schedulePushConversationContext();
+      }
     }
   }
 
@@ -323,7 +355,9 @@
       typeof global.ThayMinhPancakeDom.startContextWatcher === 'function'
     ) {
       global.ThayMinhPancakeDom.startContextWatcher((ctx) => {
-        pushConversationContext(ctx);
+        // Deduped inside push; light debounce for mutation storms
+        schedulePushConversationContext();
+        void ctx;
       });
     }
   }
