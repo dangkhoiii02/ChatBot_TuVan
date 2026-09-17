@@ -12,7 +12,6 @@ import {
   MOCK_CONTEXT_INTENTS,
   MOCK_CONTEXT_QUOTE,
   MOCK_STUDENT,
-  MOCK_SUGGESTIONS,
 } from './data/mockStudent';
 import type { PronounPair, Suggestion, TabId } from './types';
 import {
@@ -53,9 +52,9 @@ function toSuggestionList(
 export default function App() {
   const [tab, setTab] = useState<TabId>('suggestions');
   const [studentName, setStudentName] = useState(MOCK_STUDENT.name);
-  const [suggestions, setSuggestions] = useState<Suggestion[]>(MOCK_SUGGESTIONS);
-  const [selectedId, setSelectedId] = useState<string | null>(MOCK_SUGGESTIONS[0]?.id ?? null);
-  const [activeDraft, setActiveDraft] = useState(MOCK_SUGGESTIONS[0]?.text ?? '');
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [activeDraft, setActiveDraft] = useState('');
   const [pronouns, setPronouns] = useState<PronounPair>(DEFAULT_PAIR);
   const [notes, setNotes] = useState(MOCK_STUDENT.notes);
   const [memories, setMemories] = useState<string[]>(MOCK_STUDENT.memories);
@@ -68,7 +67,7 @@ export default function App() {
   const [apiStatus, setApiStatus] = useState('Chưa gọi API gợi ý');
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [clickBanner, setClickBanner] = useState<string | null>(null);
-  const [usingMock, setUsingMock] = useState(true);
+  const [usingMock, setUsingMock] = useState(false);
 
   const hasSessionRef = useRef(hasSession);
   const conversationIdRef = useRef(conversationId);
@@ -193,8 +192,9 @@ export default function App() {
       setApiStatus('Đã login — chờ conversationId từ bridge (mở hội thoại Pancake)');
       return;
     }
-    void loadSuggestionsFromApi();
-  }, [hasSession, conversationId, loadSuggestionsFromApi]);
+    // Do not auto-fetch: only user click triggers loadSuggestionsFromApi (avoids Network loop).
+    setApiStatus('Sẵn sàng — bấm “Tạo gợi ý từ hội thoại”');
+  }, [hasSession, conversationId]);
 
   const handlePronounsChange = (pair: PronounPair) => {
     const prevPair = pronouns;
@@ -244,7 +244,7 @@ export default function App() {
     logoutAppSession();
     setHasSession(false);
     setUsingMock(true);
-    setSuggestions(MOCK_SUGGESTIONS);
+    setSuggestions([]);
     setApiStatus('Đã logout');
   };
 
