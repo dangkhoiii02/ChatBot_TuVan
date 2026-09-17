@@ -15,6 +15,9 @@ export interface SuggestionPanelProps {
   onSaveMemory: (content: string, reason?: string) => void;
   onDeleteMemory?: (id: string) => void;
   onCloseMobile?: () => void;
+  aiApiKey?: string;
+  aiModel?: string;
+  onOpenAiSettings?: () => void;
 }
 
 type AssistantTab = 'suggestions' | 'profile' | 'grading' | 'memories';
@@ -40,12 +43,24 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
   onAddCustomField,
   onAcceptAiProfileSuggestion,
   onSaveMemory,
-  onCloseMobile
+  onCloseMobile,
+  aiApiKey,
+  aiModel,
+  onOpenAiSettings
 }) => {
   const [activeTab, setActiveTab] = useState<AssistantTab>('suggestions');
   const [isPronounMenuOpen, setIsPronounMenuOpen] = useState(false);
   const [gradingInput, setGradingInput] = useState('');
   const [isGradingLoading, setIsGradingLoading] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleCopySuggestion = (id: string, text: string) => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+    }
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   // Custom Field Form State
   const [isAddingField, setIsAddingField] = useState(false);
@@ -196,6 +211,24 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
           <span className="action-lead">Việc tiếp theo:</span>
           <span className="action-text">{profile?.nextAction || 'Chờ phản hồi từ học viên'}</span>
         </div>
+
+        {/* Dải nút đổi nhanh danh xưng 1-click */}
+        <div className="pinned-pronoun-strip">
+          <span className="strip-title">Xưng hô nhanh:</span>
+          <div className="pronoun-pills-row">
+            {COMMON_PRONOUNS.map((pair) => (
+              <button
+                key={pair.label}
+                type="button"
+                className={`pronoun-quick-chip ${pair.label === currentPronoun.label ? 'active' : ''}`}
+                onClick={() => onChangePronouns(pair)}
+                title={`Đổi xưng hô: ${pair.senderCall} — ${pair.recipientCall}`}
+              >
+                {pair.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* 2. 4 TABS NAVIGATION */}
@@ -257,6 +290,27 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
                 </span>
               </div>
             )}
+
+            {/* AI ENGINE & MODEL STATUS STRIP */}
+            <div className="suggestion-engine-strip">
+              <div
+                className="engine-status-badge"
+                onClick={onOpenAiSettings}
+                title="Bấm để đổi AI API Key hoặc chọn mô hình"
+              >
+                <span className={`engine-dot ${aiApiKey?.trim() ? 'dot-live' : 'dot-mock'}`} />
+                <span className="engine-text">
+                  {aiApiKey?.trim() ? (
+                    <>Mô hình AI: <strong>{aiModel || ''}</strong></>
+                  ) : (
+                    <>Chế độ: <strong>Mock Knowledge Engine</strong></>
+                  )}
+                </span>
+                {onOpenAiSettings && (
+                  <span className="btn-engine-change">⚙️ Đổi Key / Model</span>
+                )}
+              </div>
+            </div>
 
             <div className="pane-action-bar">
               <span className="pane-title">3 phương án phản hồi tối ưu:</span>
@@ -324,8 +378,17 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
                           type="button"
                           className="btn-apply-suggestion"
                           onClick={() => onUseSuggestion(sug.content)}
+                          title="Chèn nội dung câu này vào ô soạn thảo"
                         >
-                          👉 Dùng câu này
+                          👉 Dán vào ô soạn
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn-quick-copy ${copiedId === sug.id ? 'copied' : ''}`}
+                          onClick={() => handleCopySuggestion(sug.id, sug.content)}
+                          title="Sao chép nhanh câu này vào Clipboard"
+                        >
+                          {copiedId === sug.id ? '✓ Đã copy!' : '📋 Copy'}
                         </button>
                       </div>
                     </div>

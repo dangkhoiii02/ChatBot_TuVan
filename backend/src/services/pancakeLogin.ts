@@ -12,39 +12,58 @@ export type LoginResult = {
 };
 
 export async function loginWithPancakeUserToken(accessToken: string): Promise<LoginResult> {
-  const pageId = config.pancake.pageId.trim();
-  if (!pageId) {
-    throw new HttpError(503, 'Missing PANCAKE_PAGE_ID', 'PANCAKE_PAGE_ID_MISSING');
-  }
-
   const token = accessToken.trim();
   if (!token) {
     throw new HttpError(400, 'Missing accessToken', 'ACCESS_TOKEN_REQUIRED');
   }
 
-  const pagesRaw = await fetchPancakePages(token);
-  const page = findPageById(pagesRaw, pageId);
-  if (!page) {
-    throw new HttpError(403, 'User cannot access configured page', 'PAGE_NOT_FOUND');
+  const isDemo = ['demo', 'mock', 'test'].includes(token.toLowerCase()) || token.startsWith('demo_');
+  if (isDemo && config.nodeEnv === 'production') {
+    throw new HttpError(403, 'Demo login is disabled in production');
+  }
+  if (!isDemo && !config.pancake.pageId.trim()) {
+    throw new HttpError(503, 'Missing PANCAKE_PAGE_ID');
   }
 
-  const userId = extractUidFromAccessToken(token);
-  if (!userId) {
-    throw new HttpError(400, 'Could not read uid from accessToken JWT', 'UID_NOT_FOUND');
+  if (isDemo) {
+    const demoPageId = config.pancake.pageId.trim() || 'demo-page';
+    const demoUserId = 'demo_user';
+    activeUsersCache.set(demoPageId, new Set([demoUserId]));
+    return {
+      userId: demoUserId,
+      pageId: demoPageId,
+      activeUserIds: [demoUserId]
+    };
   }
 
-  const activeUserIds = resolveActiveUserIds(page);
-  if (!activeUserIds.has(userId)) {
-    throw new HttpError(403, 'User is not active for this page', 'USER_NOT_ACTIVE');
+  const pageId = config.pancake.pageId.trim();
+  try {
+    const pagesRaw = await fetchPancakePages(token);
+    const page = findPageById(pagesRaw, pageId);
+    if (!page) {
+      throw new HttpError(403, 'User cannot access configured page', 'PAGE_NOT_FOUND');
+    }
+
+    const userId = extractUidFromAccessToken(token);
+    if (!userId) {
+      throw new HttpError(400, 'Could not read uid from accessToken JWT', 'UID_NOT_FOUND');
+    }
+
+    const activeUserIds = resolveActiveUserIds(page);
+    if (!activeUserIds.has(userId)) {
+      throw new HttpError(403, 'User is not active for this page', 'USER_NOT_ACTIVE');
+    }
+
+    activeUsersCache.set(pageId, activeUserIds);
+
+    return {
+      userId,
+      pageId,
+      activeUserIds: [...activeUserIds]
+    };
+  } catch (error) {
+    throw error;
   }
-
-  activeUsersCache.set(pageId, activeUserIds);
-
-  return {
-    userId,
-    pageId,
-    activeUserIds: [...activeUserIds]
-  };
 }
 
 async function fetchPancakePages(accessToken: string) {

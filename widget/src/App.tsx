@@ -1,3 +1,4 @@
+import { AiSettings } from './components/AiSettings';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Header } from './components/Header';
 import { StudentCard } from './components/StudentCard';
@@ -155,8 +156,8 @@ export default function App() {
       setSuggestions(next);
       setSelectedId(next[0]?.id ?? null);
       setActiveDraft(next[0]?.text ?? '');
-      setUsingMock(false);
-      setApiStatus(`OK (${source}) · ${messages.length} msg · ${next.length} gợi ý`);
+      setUsingMock(Boolean(result.isDemoFallback));
+      setApiStatus(`${result.isDemoFallback ? 'Dữ liệu dự phòng' : result.provider || 'AI'} (${source}) · ${next.length} gợi ý${result.isDemoFallback && result.analysis ? ' · ' + result.analysis : ''}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'error';
       setApiStatus(`Lỗi gợi ý: ${message}`);
@@ -279,6 +280,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <Header />
+      <AiSettings />
       {!hasSession ? (
         <LoginPanel bridgeToken={bridgeToken} onLoggedIn={() => setHasSession(true)} />
       ) : (

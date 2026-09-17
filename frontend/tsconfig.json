@@ -13,6 +13,7 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
+    "paths": { "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime.d.ts"], "@shared/*": ["../shared/*"] },
 
     /* Linting */
     "strict": true,

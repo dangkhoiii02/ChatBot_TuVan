@@ -1,3 +1,4 @@
+import { ZodError } from 'zod';
 import express from 'express';
 import { corsMiddleware } from './middleware/cors.js';
 import { requireActiveUser } from './middleware/requireActiveUser.js';
@@ -35,6 +36,7 @@ export function createApp() {
       res: express.Response,
       _next: express.NextFunction
     ) => {
+      if (error instanceof ZodError) return res.status(400).json({ error: 'Dữ liệu yêu cầu không hợp lệ', issues: error.issues.map(({ path, message }) => ({ path, message })) });
       if (error instanceof HttpError) {
         return res.status(error.statusCode).json({
           error: error.message,

@@ -66,12 +66,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- API KEY & SETTINGS ---
   function initApiKey() {
-    const key = localStorage.getItem('gemini_api_key') || '';
-    let model = localStorage.getItem('gemini_model') || 'gemini-3.6-flash';
+    for (const [oldKey, newKey] of [['gemini_api_key', 'ai_api_key'], ['gemini_model', 'ai_model']]) {
+      const oldValue = localStorage.getItem(oldKey);
+      if (oldValue && localStorage.getItem(newKey) === null) localStorage.setItem(newKey, oldValue);
+      localStorage.removeItem(oldKey);
+    }
+    const key = localStorage.getItem('ai_api_key') || '';
+    let model = localStorage.getItem('ai_model') || '';
 
-    if (model === 'gemini-2.0-flash' || model === 'gemini-1.5-flash') {
-      model = 'gemini-3.6-flash';
-      localStorage.setItem('gemini_model', 'gemini-3.6-flash');
+    for (const [id, key] of [['aiProvider', 'ai_provider'], ['aiBaseUrl', 'ai_base_url']]) {
+      const field = document.getElementById(id);
+      field.value = localStorage.getItem(key) || (id === 'aiProvider' ? 'auto' : '');
+      field.addEventListener('change', () => localStorage.setItem(key, field.value));
     }
 
     drawerApiKeyInput.value = key;
@@ -91,18 +97,18 @@ document.addEventListener('DOMContentLoaded', () => {
     saveApiKeyBtn.addEventListener('click', () => {
       const val = drawerApiKeyInput.value.trim();
       if (val) {
-        localStorage.setItem('gemini_api_key', val);
+        localStorage.setItem('ai_api_key', val);
         updateKeyStatusDisplay(true);
-        showToast('Đã lưu Gemini API Key!', '✓');
+        showToast('Đã lưu AI API Key!', '✓');
       } else {
-        localStorage.removeItem('gemini_api_key');
+        localStorage.removeItem('ai_api_key');
         updateKeyStatusDisplay(false);
         showToast('Đã gỡ bỏ API Key.', 'ℹ');
       }
     });
 
     drawerModelSelect.addEventListener('change', () => {
-      localStorage.setItem('gemini_model', drawerModelSelect.value);
+      localStorage.setItem('ai_model', drawerModelSelect.value);
       showToast(`Mô hình: ${drawerModelSelect.value}`, '✓');
     });
   }
@@ -120,11 +126,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function getApiKey() {
-    return drawerApiKeyInput.value.trim() || localStorage.getItem('gemini_api_key') || '';
+    return drawerApiKeyInput.value.trim() || localStorage.getItem('ai_api_key') || '';
   }
 
   function getModel() {
-    return drawerModelSelect.value || localStorage.getItem('gemini_model') || 'gemini-3.6-flash';
+    return drawerModelSelect.value || localStorage.getItem('ai_model') || '';
   }
 
   // --- SAMPLES ---
@@ -272,13 +278,15 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'x-gemini-api-key': apiKey
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           message: msg,
           context: context,
-          model: getModel()
+          apiKey,
+          model: getModel(),
+          provider: document.getElementById('aiProvider').value,
+          baseUrl: document.getElementById('aiProvider').value === 'custom' ? document.getElementById('aiBaseUrl').value : undefined
         })
       });
 

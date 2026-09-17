@@ -10,3 +10,7 @@ backend/data/*.jsonl
 # Build caches
 .vite/
 coverage/
+
+# SQLite runtime data (contains chat history)
+storage/*.db
+storage/*.db-*

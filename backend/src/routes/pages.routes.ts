@@ -12,21 +12,16 @@ export const pagesRouter = Router();
 pagesRouter.get(
   '/',
   asyncHandler(async (_req, res) => {
-    const pageId = config.pancake.pageId.trim();
-
-    if (!pageId) {
-      throw new HttpError(
-        501,
-        'Multi-page list removed. Set PANCAKE_PAGE_ID for single-page mode.',
-        'SINGLE_PAGE_MODE'
-      );
-    }
+    const pageId = config.pancake.pageId.trim() || 'demo-page';
+    const pageName = pageId === 'demo-page' ? 'Lớp Nhạc Thầy Minh (Demo)' : pageId;
 
     res.json({
       items: [
         {
           id: pageId,
-          name: pageId
+          name: pageName,
+          platform: 'facebook',
+          source: 'pancake'
         }
       ],
       defaultSelectedPageIds: [pageId],

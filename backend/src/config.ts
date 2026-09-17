@@ -27,10 +27,10 @@ const envSchema = z.object({
   APP_SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 60 * 12),
   PANCAKE_CONVERSATION_LIMIT: z.coerce.number().int().positive().max(50).default(30),
   PANCAKE_MESSAGE_LIMIT: z.coerce.number().int().positive().max(50).default(30),
-  AI_PROVIDER: z.enum(['mock', 'claude', 'gemini']).default('mock'),
+  AI_PROVIDER: z.enum(['auto', 'mock', 'claude', 'anthropic', 'gemini', 'openai', 'deepseek', 'groq', 'openrouter', 'mistral', 'xai', 'custom']).default('auto'),
   ANTHROPIC_API_KEY: z.string().optional().default(''),
   GEMINI_API_KEY: z.string().optional().default(''),
-  GEMINI_MODEL: z.string().optional().default('gemini-3.6-flash'),
+  GEMINI_MODEL: z.string().optional().default(''),
   AI_KNOWLEDGE_DIR: z.string().default('../data'),
   DEMO_REPLY_STORE_PATH: z.string().default('./data/demo_replies.jsonl')
 });
@@ -80,7 +80,7 @@ export const config = {
     provider: env.AI_PROVIDER,
     anthropicApiKey: env.ANTHROPIC_API_KEY,
     geminiApiKey: env.GEMINI_API_KEY,
-    geminiModel: env.GEMINI_MODEL || 'gemini-3.6-flash',
+    geminiModel: env.GEMINI_MODEL || '',
     knowledgeDir: resolveBackendPath(env.AI_KNOWLEDGE_DIR || '../data')
   },
   demoReplyStorePath: resolveBackendPath(env.DEMO_REPLY_STORE_PATH)

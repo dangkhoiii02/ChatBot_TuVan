@@ -1,3 +1,4 @@
+import { readAISettings } from '../../../shared/ai-settings';
 import { getSessionToken, setAppSession, clearAppSession } from '../lib/session';
 import { getStaffUserId } from '../lib/userId';
 import type {
@@ -76,11 +77,25 @@ export async function getConversationMessages(conversationId: string, pageId: st
 export async function createSuggestions(input: {
   conversationId: string;
   messages: ChatMessage[];
+  provider?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
 }) {
+  const stored = readAISettings();
+  const apiKey = input.apiKey ?? stored.apiKey;
+  const model = input.model ?? stored.model;
+  const provider = input.provider ?? stored.provider;
+  const baseUrl = provider === 'custom' ? input.baseUrl ?? stored.baseUrl : undefined;
+
   return requestJson<BackendSuggestionResult>('/api/suggestions', {
     method: 'POST',
     body: JSON.stringify({
       conversationId: input.conversationId,
+      apiKey,
+      model,
+      provider: apiKey || model || provider === 'mock' ? provider : undefined,
+      baseUrl,
       messages: input.messages.map((message) => ({
         id: message.id,
         conversationId: input.conversationId,

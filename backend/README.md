@@ -1,6 +1,6 @@
 # Pancake Demo Backend
 
-Backend demo nay dung Node.js + TypeScript de lay hoi thoai tu Pancake o che do read-only, sinh goi y bang mock/Gemini, va luu phan hoi demo vao local JSONL.
+Backend demo nay dung Node.js + TypeScript de lay hoi thoai tu Pancake o che do read-only, sinh goi y bang dữ liệu mẫu hoặc AI đa nhà cung cấp, va luu phan hoi demo vao local JSONL.
 
 Trong phase nay backend khong gui tin nhan ve Pancake, khong mark read, khong assign, va khong tag hoi thoai.
 
@@ -45,13 +45,13 @@ Bien tuy chon (mac dinh tat):
 ```bash
 AI_PROVIDER=gemini
 GEMINI_API_KEY=your_gemini_api_key
-GEMINI_MODEL=gemini-3.6-flash
+GEMINI_MODEL=<model-id-duoc-cap-quyen>
 AI_KNOWLEDGE_DIR=../data
 ```
 
 ### CORS (E1 extension / Vite)
 
-Backend cho phep Origin: `chrome-extension://*`, Vite widget `http://127.0.0.1:5174`, FE `5173`.
+Backend cho phep Origin: `chrome-extension://*`, Vite widget `http://127.0.0.1:5174`, FE `5173` hoặc `5180`.
 Packed widget can goi `http://127.0.0.1:4000` (set `VITE_API_BASE_URL` khi build).
 Them origin: `CORS_ORIGINS=https://example.com`.
 
@@ -82,3 +82,5 @@ pnpm start
 - Login acc ngoai list / sai page → `403`.
 - Staff API voi Bearer hop le → OK; thieu/invalid → `401`.
 - Conversations van dung `PANCAKE_PAGE_ACCESS_TOKEN` only.
+
+Cấu hình AI đa nhà cung cấp, giới hạn hỗ trợ và kiểm thử: xem [README gốc](../README.md). Node.js 22.13+ cần thiết cho `node:sqlite`. Demo login chỉ hoạt động ngoài production; lỗi Pancake không cấp phiên demo.

@@ -1,3 +1,4 @@
+import { readAISettings } from '../../../shared/ai-settings';
 import { clearAppSession, getSessionToken, setAppSession } from './session';
 
 type JsonRecord = Record<string, unknown>;
@@ -25,6 +26,9 @@ export type ApiChatMessage = {
 };
 
 export type SuggestionApiResult = {
+  provider?: string;
+  isDemoFallback?: boolean;
+  analysis?: string;
   intent?: string;
   sensitivity?: string;
   suggestions: Array<{ id: string; tone: string; content: string }>;
@@ -74,9 +78,11 @@ export async function createSuggestions(input: {
     createdAt: string;
   }>;
 }) {
+  const settings = readAISettings();
+  const ai = settings.apiKey || settings.model || settings.provider === 'mock' ? settings : {};
   return requestJson<SuggestionApiResult>('/api/suggestions', {
     method: 'POST',
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, ...ai }),
   });
 }
 

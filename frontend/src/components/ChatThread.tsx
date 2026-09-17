@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { Conversation, ConversationIntent } from '../types';
 
 export interface ChatThreadProps {
@@ -47,7 +47,14 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
   onResolveConflict,
   onOpenAssistantMobile
 }) => {
+  const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  const handleCopyMsg = (id: string, text: string) => {
+    if (navigator.clipboard) navigator.clipboard.writeText(text);
+    setCopiedMsgId(id);
+    setTimeout(() => setCopiedMsgId(null), 2000);
+  };
 
   // Auto scroll to bottom when conversation or message list changes
   useEffect(() => {
@@ -162,7 +169,17 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
                 <div className={`message-bubble ${isStudent ? 'bubble-student' : 'bubble-staff'}`}>
                   {msg.text}
                 </div>
-                <div className="message-timestamp">{msg.sentAt}</div>
+                <div className="message-meta-row">
+                  <span className="message-timestamp">{msg.sentAt}</span>
+                  <button
+                    type="button"
+                    className={`btn-msg-copy ${copiedMsgId === msg.id ? 'copied' : ''}`}
+                    onClick={() => handleCopyMsg(msg.id, msg.text)}
+                    title="Sao chép tin nhắn này"
+                  >
+                    {copiedMsgId === msg.id ? '✓ Đã copy' : '📋 Copy'}
+                  </button>
+                </div>
               </div>
 
               {!isStudent && (
@@ -215,9 +232,26 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
         )}
 
         <div className="composer-wrapper">
+          <div className="composer-top-bar">
+            <span className="composer-title">✍️ Soạn thảo phản hồi học viên</span>
+            <div className="composer-top-actions">
+              {draftMessage && (
+                <button
+                  type="button"
+                  className="btn-clear-draft"
+                  onClick={() => onDraftChange('')}
+                  title="Xóa sạch nội dung ô nháp"
+                >
+                  ✕ Xóa trắng
+                </button>
+              )}
+              <span className="char-count">{draftMessage.length} ký tự</span>
+            </div>
+          </div>
+
           <textarea
             className="composer-textarea"
-            placeholder="Nhập nội dung phản hồi học viên (nhấn Ctrl + Enter để gửi demo)..."
+            placeholder="Nhập nội dung phản hồi học viên (nhấn Ctrl + Enter hoặc Cmd + Enter để gửi demo)..."
             value={draftMessage}
             onChange={(e) => onDraftChange(e.target.value)}
             onKeyDown={handleKeyDown}

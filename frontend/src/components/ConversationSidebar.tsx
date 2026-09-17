@@ -56,6 +56,15 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
     });
   }, [conversations, searchTerm, filterIntent]);
 
+  const counts = useMemo(() => {
+    return {
+      all: conversations.length,
+      check_in: conversations.filter((c) => c.intent === 'check_in').length,
+      assignment_feedback: conversations.filter((c) => c.intent === 'assignment_feedback').length,
+      sensitive: conversations.filter((c) => c.intent === 'sensitive').length
+    };
+  }, [conversations]);
+
   return (
     <aside className="conversation-sidebar">
       {/* Header */}
@@ -99,35 +108,35 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
           )}
         </div>
 
-        {/* Filter buttons */}
+        {/* Filter buttons with live counts */}
         <div className="sidebar-filter-tabs">
           <button
             type="button"
             className={`filter-tab ${filterIntent === 'all' ? 'active' : ''}`}
             onClick={() => setFilterIntent('all')}
           >
-            Tất cả
+            Tất cả <span className="tab-count">({counts.all})</span>
           </button>
           <button
             type="button"
             className={`filter-tab ${filterIntent === 'check_in' ? 'active' : ''}`}
             onClick={() => setFilterIntent('check_in')}
           >
-            Check-in
+            Check-in <span className="tab-count">({counts.check_in})</span>
           </button>
           <button
             type="button"
             className={`filter-tab ${filterIntent === 'assignment_feedback' ? 'active' : ''}`}
             onClick={() => setFilterIntent('assignment_feedback')}
           >
-            Chấm bài
+            Chấm bài <span className="tab-count">({counts.assignment_feedback})</span>
           </button>
           <button
             type="button"
             className={`filter-tab ${filterIntent === 'sensitive' ? 'active sensitive' : ''}`}
             onClick={() => setFilterIntent('sensitive')}
           >
-            Cần chú ý
+            Cần chú ý <span className="tab-count count-alert">({counts.sensitive})</span>
           </button>
         </div>
 

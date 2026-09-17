@@ -1,3 +1,6 @@
+import { AiProviderFields } from '../../shared/AiProviderFields';
+import { migrateAISettings, readAISettings } from '../../shared/ai-settings';
+migrateAISettings();
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   BackendChatMessage,
@@ -28,6 +31,7 @@ import {
   logoutAppSession
 } from './services/api';
 import { getStaffUserId, setStaffUserId } from './lib/userId';
+import { adaptPronouns, cleanCorruptions } from './lib/pronounAdapter';
 import { clearAppSession, getSessionToken } from './lib/session';
 import { LoginGate } from './components/LoginGate';
 
@@ -56,6 +60,40 @@ export const App: React.FC = () => {
     import.meta.env.VITE_ALLOW_DEV_USER_HEADER === 'true';
   const [isMockMode, setIsMockMode] = useState<boolean>(true);
   const hasLoadedPagesRef = useRef(false);
+
+  // AI API Key & Model configuration
+  const [showAiSettings, setShowAiSettings] = useState<boolean>(false);
+  const [aiApiKey, setAiApiKey] = useState<string>(() => localStorage.getItem('ai_api_key') || '');
+  const [aiProvider, setAiProvider] = useState(() => localStorage.getItem('ai_provider') || 'auto');
+  const [aiBaseUrl, setAiBaseUrl] = useState(() => localStorage.getItem('ai_base_url') || '');
+  const [aiModel, setAiModel] = useState<string>(() => localStorage.getItem('ai_model') || '');
+  const [showKeySecret, setShowKeySecret] = useState<boolean>(false);
+
+  const handleCloseAiSettings = useCallback(() => {
+    const saved = readAISettings();
+    setAiApiKey(saved.apiKey || '');
+    setAiModel(saved.model || '');
+    setAiProvider(saved.provider);
+    setAiBaseUrl(saved.baseUrl || '');
+    setShowAiSettings(false);
+  }, []);
+
+  const handleSaveAiSettings = useCallback(() => {
+    const trimmed = aiApiKey.trim();
+    if (trimmed) {
+      localStorage.setItem('ai_api_key', trimmed);
+    } else {
+      localStorage.removeItem('ai_api_key');
+    }
+    localStorage.setItem('ai_model', aiModel);
+    localStorage.setItem('ai_provider', aiProvider);
+    localStorage.setItem('ai_base_url', aiBaseUrl);
+    setShowAiSettings(false);
+  }, [aiApiKey, aiModel, aiProvider, aiBaseUrl]);
+
+  const handleClearApiKey = useCallback(() => {
+    setAiApiKey('');
+  }, []);
 
   // New states for Assistant features
   const [currentPronouns, setCurrentPronouns] = useState<PronounPair>({
@@ -383,15 +421,16 @@ export const App: React.FC = () => {
 
   // Handle applying a suggestion with draft conflict detection
   const handleUseSuggestion = useCallback((content: string) => {
+    const cleanedContent = cleanCorruptions(content);
     const trimmedDraft = draftMessage.trim();
     if (!trimmedDraft) {
-      setDraftMessage(content);
+      setDraftMessage(cleanedContent);
       setCopySuccess(false);
       setMobileView('chat');
       return;
     }
 
-    if (trimmedDraft === content.trim()) {
+    if (trimmedDraft === cleanedContent.trim()) {
       setMobileView('chat');
       return;
     }
@@ -399,7 +438,7 @@ export const App: React.FC = () => {
     // Conflict: user already typed text in draft
     setConflictDialog({
       isOpen: true,
-      pendingContent: content
+      pendingContent: cleanedContent
     });
     setMobileView('chat');
   }, [draftMessage]);
@@ -414,35 +453,23 @@ export const App: React.FC = () => {
     setCopySuccess(false);
   }, [conflictDialog]);
 
-  // Quick Pronoun Changing with Instant Suggestion Adaptation
+  // Quick Pronoun Changing with Safe Unicode-aware Suggestion Adaptation
   const handleChangePronouns = useCallback((newPair: PronounPair) => {
     const oldPair = currentPronouns;
     setCurrentPronouns(newPair);
 
     if (!selectedConversation) return;
 
-    const adaptText = (text: string) => {
-      let result = text;
-      if (oldPair.senderCall !== newPair.senderCall && oldPair.senderCall) {
-        result = result.split(oldPair.senderCall).join(newPair.senderCall);
-      }
-      if (oldPair.recipientCall !== newPair.recipientCall && oldPair.recipientCall) {
-        result = result.split(oldPair.recipientCall).join(newPair.recipientCall);
-        result = result.split(oldPair.recipientCall.toLowerCase()).join(newPair.recipientCall.toLowerCase());
-      }
-      return result;
-    };
-
     setConversations((prev) =>
       prev.map((c) => {
         if (c.id === selectedConversation.id) {
           const updatedSuggestions = (c.suggestions || []).map((s) => ({
             ...s,
-            content: adaptText(s.content)
+            content: adaptPronouns(s.content, oldPair, newPair)
           }));
           const updatedAssignmentOptions = (c.assignmentOptions || []).map((o) => ({
             ...o,
-            content: adaptText(o.content)
+            content: adaptPronouns(o.content, oldPair, newPair)
           }));
           const updatedProfile = c.profile
             ? {
@@ -467,6 +494,12 @@ export const App: React.FC = () => {
         return c;
       })
     );
+
+    // Also adapt draft message if user has draft in progress
+    setDraftMessage((prevDraft) => {
+      if (!prevDraft.trim()) return prevDraft;
+      return adaptPronouns(prevDraft, oldPair, newPair);
+    });
   }, [currentPronouns, selectedConversation]);
 
   // Fast Pedagogical Assignment Review Generator
@@ -603,7 +636,11 @@ export const App: React.FC = () => {
     setErrorMessage('');
 
     try {
-      if (isMockMode || selectedConversation.pageId === 'demo-page' || !health?.pancakeConfigured) {
+      const savedAI = readAISettings();
+      const hasKey = Boolean(savedAI.apiKey || savedAI.model || (savedAI.provider !== 'auto' && savedAI.provider !== 'mock'));
+
+      // Nếu đang bật Mock mode thuần túy và KHÔNG có AI Key thì dùng dữ liệu mẫu cục bộ
+      if (isMockMode && !hasKey) {
         const mockItem = mockConversations.find((c) => c.id === selectedConversation.id);
         if (mockItem && mockItem.suggestions.length > 0) {
           setConversations((current) =>
@@ -660,9 +697,11 @@ export const App: React.FC = () => {
         return;
       }
 
+      // Gọi Backend API (tích hợp AI Key & Model nếu người dùng đã nhập)
       const result = await createSuggestions({
         conversationId: selectedConversation.id,
-        messages: selectedConversation.messages
+        messages: selectedConversation.messages,
+        ...savedAI
       });
 
       setConversations((current) =>
@@ -712,7 +751,7 @@ export const App: React.FC = () => {
     } finally {
       setIsGenerating(false);
     }
-  }, [currentPronouns, health?.pancakeConfigured, isGenerating, selectedConversation]);
+  }, [currentPronouns, health?.pancakeConfigured, isMockMode, isGenerating, aiApiKey, aiModel, aiProvider, aiBaseUrl, selectedConversation]);
 
 
   const applyStaffUserId = useCallback(() => {
@@ -729,7 +768,17 @@ export const App: React.FC = () => {
 
 
   if (!hasSession) {
-    return <LoginGate onLoggedIn={() => setHasSession(true)} />;
+    return (
+      <LoginGate
+        onLoggedIn={() => {
+          setAiApiKey(localStorage.getItem('ai_api_key') || '');
+          setAiModel(localStorage.getItem('ai_model') || '');
+          setAiProvider(localStorage.getItem('ai_provider') || 'auto');
+          setAiBaseUrl(localStorage.getItem('ai_base_url') || '');
+          setHasSession(true);
+        }}
+      />
+    );
   }
 
   return (
@@ -761,6 +810,19 @@ export const App: React.FC = () => {
           >
             <span className={`dot-status ${isMockMode ? 'dot-amber' : 'dot-green'}`} />
             {isMockMode ? 'Chế độ: Mock Test (6 học viên)' : 'Chế độ: Live API'}
+          </button>
+
+          {/* Nút Cấu hình AI Key & Model */}
+          <button
+            type="button"
+            className={`btn-mode-toggle btn-gemini-pill ${aiApiKey.trim() ? 'has-key' : ''}`}
+            onClick={() => setShowAiSettings(true)}
+            title="Cấu hình AI API Key và chọn Model"
+          >
+            <span className={`dot-status ${aiApiKey.trim() ? 'dot-green' : 'dot-amber'}`} />
+            <span className="gemini-pill-label">
+              {aiApiKey.trim() ? `⚡ AI: ${aiModel}` : '🔑 Nhập Key & Chọn Model'}
+            </span>
           </button>
           <span className="badge-status-pill">{conversations.length} hội thoại</span>
           {health && <span className="badge-status-pill">AI: {health.aiProvider}</span>}
@@ -839,6 +901,9 @@ export const App: React.FC = () => {
             onAcceptAiProfileSuggestion={handleAcceptAiProfileSuggestion}
             onSaveMemory={handleSaveMemory}
             onCloseMobile={() => setMobileView('chat')}
+            aiApiKey={aiApiKey}
+            aiModel={aiModel}
+            onOpenAiSettings={() => setShowAiSettings(true)}
           />
         </div>
       </div>
@@ -878,6 +943,93 @@ export const App: React.FC = () => {
           )}
         </button>
       </nav>
+
+      {/* MODAL CẤU HÌNH GEMINI API KEY & MÔ HÌNH */}
+      {showAiSettings && (
+        <div className="modal-backdrop" onClick={handleCloseAiSettings}>
+          <div className="ai-settings-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title-group">
+                <h3>⚙️ Cấu hình AI & Mô hình</h3>
+                <p className="modal-subtitle">
+                  Nhập API Key để AI Thầy Minh tự động phân tích ngữ cảnh và sinh 3 phương án phản hồi trực tiếp theo thời gian thực.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={handleCloseAiSettings}
+                title="Đóng"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <AiProviderFields provider={aiProvider} baseUrl={aiBaseUrl} onProvider={v => { setAiProvider(v); }} onBaseUrl={v => { setAiBaseUrl(v); }} />
+<label className="settings-field">
+                <span className="field-label">AI API Key</span>
+                <div className="input-password-row">
+                  <input
+                    type={showKeySecret ? 'text' : 'password'}
+                    className="minimal-input font-mono"
+                    placeholder="Dán API key của nhà cung cấp..."
+                    value={aiApiKey}
+                    onChange={(e) => setAiApiKey(e.target.value)}
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    className="btn-mini"
+                    onClick={() => setShowKeySecret((prev) => !prev)}
+                  >
+                    {showKeySecret ? 'Ẩn' : 'Hiện'}
+                  </button>
+                  {aiApiKey && (
+                    <button
+                      type="button"
+                      className="btn-mini btn-danger-text"
+                      onClick={handleClearApiKey}
+                    >
+                      Xóa
+                    </button>
+                  )}
+                </div>
+                <span className="field-hint">
+                  {aiApiKey.trim()
+                    ? 'Nhấn Lưu cấu hình để áp dụng key cho lần tạo gợi ý tiếp theo.'
+                    : 'ℹ Chưa có Key: Hệ thống sẽ tự động dùng Mock Knowledge Base chuẩn Thầy Minh để bạn thử nghiệm đầy đủ.'}
+                </span>
+              </label>
+
+              <label className="settings-field">
+                <span className="field-label">Chọn Mô hình AI (Model ID)</span>
+                <input aria-label="Mã model AI" className="minimal-input ai-key-input" value={aiModel} onChange={(e) => setAiModel(e.target.value)} placeholder="Nhập mã model chính xác" />
+                <span className="field-hint">
+                  Nhấn Lưu cấu hình để áp dụng model. Key và model sẽ được kiểm tra khi tạo gợi ý.
+                </span>
+              </label>
+            </div>
+
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleCloseAiSettings}
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={handleSaveAiSettings}
+              >
+                Lưu cấu hình
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

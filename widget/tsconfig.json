@@ -11,14 +11,13 @@
     "moduleDetection": "force",
     "noEmit": true,
     "jsx": "react-jsx",
+    "paths": { "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime.d.ts"], "@shared/*": ["../shared/*"] },
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
-    "paths": {
-      "@shared/*": ["../shared/*"]
-    }
+    "forceConsistentCasingInFileNames": true
   },
   "include": ["src", "../shared/bridge.ts"]
 }

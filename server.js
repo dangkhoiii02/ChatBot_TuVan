@@ -1,3 +1,4 @@
+const { resolveAI, requestAI } = require('./shared/ai-provider.cjs');
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -207,18 +208,12 @@ const server = http.createServer(async (req, res) => {
     // 5. API Phân loại và Sinh 5 phương án trả lời bằng Gemini
     if (pathname === '/api/generate' && method === 'POST') {
       const body = await parseRequestBody(req);
-      let {
-        message = '',
-        context = {},
-        apiKey: clientApiKey,
-        model = 'gemini-3.6-flash'
-      } = body;
-
-      if (!model || model === 'gemini-2.0-flash') {
-        model = 'gemini-3.6-flash';
-      }
-
-      const apiKey = clientApiKey || req.headers['x-gemini-api-key'] || process.env.GEMINI_API_KEY;
+      const { message = '', context = {} } = body;
+      let settings;
+      try {
+        settings = resolveAI({ ...body, apiKey: body.apiKey ?? req.headers['x-gemini-api-key'] });
+      } catch (error) { return sendJSON(res, 400, { success: false, error: error.message }); }
+      const { apiKey, model } = settings;
 
       if (!message.trim()) {
         return sendJSON(res, 400, { success: false, error: 'Tin nhắn học viên không được để trống.' });
@@ -265,7 +260,7 @@ const server = http.createServer(async (req, res) => {
             data: {
               sensitivity: redFlagCheck.isRed ? 'do' : matchedSample.sensitivity,
               flag_reason: redFlagCheck.isRed ? redFlagCheck.reason : (matchedSample.flag_reason || 'Mẫu dữ liệu thực tế'),
-              analysis: `[Chế độ Demo Dữ Liệu Thật]: Tin nhắn được đối chiếu với cơ sở dữ liệu mẫu từ Thầy Minh Piano. Nhập Gemini API Key ở góc trên để AI tự động sinh câu trả lời mới theo thời gian thực!`,
+              analysis: `[Chế độ Demo Dữ Liệu Thật]: Tin nhắn được đối chiếu với cơ sở dữ liệu mẫu từ Thầy Minh Piano. Nhập AI API Key ở góc trên để AI tự động sinh câu trả lời mới theo thời gian thực!`,
               replies: replies
             },
             redFlagTriggered: redFlagCheck.isRed
@@ -274,7 +269,7 @@ const server = http.createServer(async (req, res) => {
 
         return sendJSON(res, 400, {
           success: false,
-          error: 'Chưa cung cấp Gemini API Key! Vui lòng dán Gemini API Key ở góc trên giao diện để AI phân tích tin nhắn này (hoặc bấm chọn các nút Mẫu tin nhắn thử nghiệm ở trên).'
+          error: 'Chưa cung cấp AI API Key! Vui lòng dán AI API Key ở góc trên giao diện để AI phân tích tin nhắn này (hoặc bấm chọn các nút Mẫu tin nhắn thử nghiệm ở trên).'
         });
       }
 
@@ -322,143 +317,11 @@ ${redFlagsContent}
         if (context.appointment_days) studentContextPrompt += `- Số ngày hẹn: ${context.appointment_days}\n`;
       }
 
-      // Xây dựng contents cho Gemini API
-      const contents = [
-        {
-          role: 'user',
-          parts: [{ text: studentContextPrompt }]
-        }
-      ];
-
-      // Request body theo chuẩn Gemini API ép JSON schema
-      const geminiRequestBody = {
-        systemInstruction: {
-          parts: [{ text: systemInstructionText }]
-        },
-        contents: contents,
-        generationConfig: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: 'OBJECT',
-            properties: {
-              sensitivity: { 
-                type: 'STRING', 
-                enum: ['xanh', 'vang', 'do'],
-                description: 'Phân loại mức độ nhạy cảm' 
-              },
-              flag_reason: { 
-                type: 'STRING',
-                description: 'Lý do phân loại độ nhạy cảm' 
-              },
-              analysis: { 
-                type: 'STRING',
-                description: 'Phân tích ngắn gọn tình huống và tâm lý học viên' 
-              },
-              replies: {
-                type: 'ARRAY',
-                minItems: 5,
-                maxItems: 5,
-                items: {
-                  type: 'OBJECT',
-                  properties: {
-                    tone: { 
-                      type: 'STRING', 
-                      description: 'Tên góc tiếp cận (ví dụ: Đồng cảm thấu hiểu, Kỹ thuật chi tiết, Quy định rõ ràng, Ngắn gọn súc tích, Động viên khích lệ)' 
-                    },
-                    content: { 
-                      type: 'STRING', 
-                      description: 'Nội dung phản hồi hoàn chỉnh chuẩn giọng Thầy Minh' 
-                    }
-                  },
-                  required: ['tone', 'content']
-                }
-              }
-            },
-            required: ['sensitivity', 'flag_reason', 'analysis', 'replies']
-          },
-          temperature: 0.7
-        }
-      };
-
-      // Gọi Gemini API bằng native fetch
-      const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      
-      let response;
-      try {
-        response = await fetch(geminiEndpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(geminiRequestBody)
-        });
-      } catch (fetchErr) {
-        console.error('Fetch to Gemini failed:', fetchErr);
-
-        // Kiểm tra xem có thể dùng fallback từ mẫu nếu có
-        const trimmedMsg = message.trim().toLowerCase();
-        const matchedSample = fewShots.find(s => 
-          trimmedMsg.includes(s.input_message.toLowerCase().slice(0, 25)) ||
-          s.input_message.toLowerCase().includes(trimmedMsg.slice(0, 25))
-        );
-
-        if (matchedSample) {
-          const tones = [
-            'Tình cảm & Đồng cảm sâu sắc',
-            'Chuyên môn kỹ thuật & Sư phạm',
-            'Rõ ràng theo Quy định & Policy',
-            'Ngắn gọn, súc tích',
-            'Khích lệ & Tạo động lực'
-          ];
-          const replies = (matchedSample.model_replies || []).slice(0, 5).map((content, idx) => ({
-            tone: typeof content === 'object' ? content.tone : (tones[idx] || `Góc nhìn ${idx + 1}`),
-            content: typeof content === 'object' ? content.content : content
-          }));
-
-          return sendJSON(res, 200, {
-            success: true,
-            isDemoFallback: true,
-            data: {
-              sensitivity: redFlagCheck.isRed ? 'do' : matchedSample.sensitivity,
-              flag_reason: redFlagCheck.isRed ? redFlagCheck.reason : (matchedSample.flag_reason || 'Mẫu dữ liệu thực tế'),
-              analysis: `[Chế độ dự phòng]: Không thể kết nối tới Google Gemini API (Lỗi mạng/DNS: ${fetchErr.message}). Đã tự động hiển thị dữ liệu mẫu của Thầy Minh.`,
-              replies: replies
-            },
-            redFlagTriggered: redFlagCheck.isRed
-          });
-        }
-
-        let detailMsg = fetchErr.message || 'Lỗi mạng khi kết nối Gemini API';
-        if (fetchErr.cause && fetchErr.cause.code === 'ENOTFOUND') {
-          detailMsg = 'Không thể kết nối tới Google Gemini API (Lỗi DNS / Mạng không có Internet). Vui lòng khởi động lệnh "node server.js" trực tiếp trong Terminal của máy bạn để có đầy đủ kết nối mạng.';
-        }
-        return sendJSON(res, 503, { success: false, error: detailMsg });
-      }
-
-      if (!response.ok) {
-        const errText = await response.text();
-        let errMsg = `Gemini API Lỗi (${response.status}): ${response.statusText}`;
-        try {
-          const errJson = JSON.parse(errText);
-          if (errJson.error && errJson.error.message) {
-            errMsg = `Gemini API Lỗi: ${errJson.error.message}`;
-          }
-        } catch (e) {}
-        return sendJSON(res, response.status, { success: false, error: errMsg });
-      }
-
-      const geminiData = await response.json();
-      const candidate = geminiData.candidates && geminiData.candidates[0];
-      if (!candidate || !candidate.content || !candidate.content.parts || !candidate.content.parts[0]) {
-        return sendJSON(res, 500, { success: false, error: 'Không nhận được phản hồi hợp lệ từ Gemini API.' });
-      }
-
-      const rawJsonText = candidate.content.parts[0].text;
       let parsedResult;
       try {
-        parsedResult = JSON.parse(rawJsonText);
-      } catch (parseErr) {
-        return sendJSON(res, 500, { success: false, error: 'Lỗi định dạng JSON từ Gemini API.', raw: rawJsonText });
+        parsedResult = await requestAI(settings, systemInstructionText, studentContextPrompt);
+      } catch (error) {
+        return sendJSON(res, 502, { success: false, error: error.message });
       }
 
       // LỚP BẢO VỆ 2: Nếu bộ lọc từ khóa độc lập phát hiện cờ đỏ, luôn ép về CỜ ĐỎ
@@ -470,6 +333,7 @@ ${redFlagsContent}
       return sendJSON(res, 200, {
         success: true,
         data: parsedResult,
+        provider: `${settings.provider} (${settings.model})`,
         redFlagTriggered: redFlagCheck.isRed
       });
     }
@@ -486,9 +350,11 @@ ${redFlagsContent}
   }
 });
 
-server.listen(PORT, () => {
+if (require.main === module) server.listen(PORT, () => {
   console.log(`=======================================================`);
   console.log(`  Bot Trợ Lý Thầy Minh Piano đang chạy trên cổng ${PORT}`);
   console.log(`  Truy cập giao diện: http://localhost:${PORT}`);
   console.log(`=======================================================`);
 });
+
+module.exports = { server };
