@@ -49,6 +49,12 @@ GEMINI_MODEL=gemini-3.6-flash
 AI_KNOWLEDGE_DIR=../data
 ```
 
+### CORS (E1 extension / Vite)
+
+Backend cho phep Origin: `chrome-extension://*`, Vite widget `http://127.0.0.1:5174`, FE `5173`.
+Packed widget can goi `http://127.0.0.1:4000` (set `VITE_API_BASE_URL` khi build).
+Them origin: `CORS_ORIGINS=https://example.com`.
+
 ## Scripts
 
 ```bash

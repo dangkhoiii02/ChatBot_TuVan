@@ -1,4 +1,5 @@
 import express from 'express';
+import { corsMiddleware } from './middleware/cors.js';
 import { requireActiveUser } from './middleware/requireActiveUser.js';
 import { authRouter } from './routes/auth.routes.js';
 import { demoRepliesRouter } from './routes/demoReplies.routes.js';
@@ -11,6 +12,7 @@ import { HttpError } from './utils/httpError.js';
 export function createApp() {
   const app = express();
 
+  app.use(corsMiddleware);
   app.use(express.json({ limit: '1mb' }));
 
   app.use('/api/health', healthRouter);
