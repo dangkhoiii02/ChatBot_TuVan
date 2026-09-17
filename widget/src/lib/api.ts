@@ -2,7 +2,9 @@ import { clearAppSession, getSessionToken, setAppSession } from './session';
 
 type JsonRecord = Record<string, unknown>;
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') || '';
+const API_BASE_URL =
+  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ||
+  'http://127.0.0.1:4000';
 
 export type LoginResult = {
   sessionToken: string;
