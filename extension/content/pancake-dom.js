@@ -313,14 +313,28 @@
     const fromAnchors = extractFromAnchorsAndAttrs();
     const nameGuess = extractStudentNameGuess();
 
-    const conversationId =
-      fromHook.conversationId ||
+    // Prefer live URL/DOM over sessionStorage hook (stale id after thread switch).
+    const liveConversationId =
       fromUrl.conversationId ||
       fromDom.conversationId ||
       fromAnchors.conversationId ||
       null;
-    const pageId =
-      fromHook.pageId || fromUrl.pageId || fromDom.pageId || fromAnchors.pageId || null;
+    const livePageId =
+      fromUrl.pageId || fromDom.pageId || fromAnchors.pageId || null;
+
+    let conversationId = liveConversationId || fromHook.conversationId || null;
+    let pageId = livePageId || fromHook.pageId || null;
+
+    // If live page disagrees with hook stash, refresh stash to the live id.
+    if (liveConversationId && liveConversationId !== fromHook.conversationId) {
+      try {
+        sessionStorage.setItem('thay-minh:conversationId', liveConversationId);
+        if (livePageId) sessionStorage.setItem('thay-minh:pageId', livePageId);
+      } catch (_) {}
+      conversationId = liveConversationId;
+      if (livePageId) pageId = livePageId;
+    }
+
     const studentName = fromDom.studentName || nameGuess || null;
 
     return {
@@ -329,24 +343,24 @@
       pageId,
       url: fromUrl.url || (typeof location !== 'undefined' ? location.href : ''),
       sources: {
-        conversationId: fromHook.conversationId
-          ? 'network-hook[sure]'
-          : fromUrl.conversationId
+        conversationId: liveConversationId
+          ? fromUrl.conversationId
             ? 'url[sure]'
             : fromDom.conversationId
               ? 'dom-attr[likely]'
-              : fromAnchors.conversationId
-                ? 'anchor/attr[guess]'
-                : 'none',
-        pageId: fromHook.pageId
-          ? 'network-hook[sure]'
-          : fromUrl.pageId
+              : 'anchor/attr[guess]'
+          : fromHook.conversationId
+            ? 'network-hook[sure]'
+            : 'none',
+        pageId: livePageId
+          ? fromUrl.pageId
             ? 'url[sure]'
             : fromDom.pageId
               ? 'dom-attr[likely]'
-              : fromAnchors.pageId
-                ? 'anchor/attr[guess]'
-                : 'none',
+              : 'anchor/attr[guess]'
+          : fromHook.pageId
+            ? 'network-hook[sure]'
+            : 'none',
         studentName: fromDom.studentName
           ? 'dom-attr[likely]'
           : nameGuess
