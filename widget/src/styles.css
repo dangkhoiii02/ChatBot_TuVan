@@ -629,3 +629,29 @@ textarea {
 .student-note {
   overflow-wrap: anywhere;
 }
+
+.login-panel {
+  margin: 8px 10px 0;
+  padding: 10px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 10px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.login-panel-title { font-size: 13px; font-weight: 700; }
+.login-panel-help, .login-panel-hint { margin: 0; font-size: 11px; color: #64748b; line-height: 1.35; }
+.login-panel-field { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 600; color: #475569; }
+.login-panel-field textarea {
+  border: 1px solid #cbd5e1; border-radius: 8px; padding: 6px 8px; font: inherit; font-size: 11px; resize: vertical;
+}
+.login-panel-error { font-size: 11px; color: #b91c1c; background: #fef2f2; border-radius: 8px; padding: 6px 8px; }
+.btn-login, .btn-login-bridge, .btn-refresh-suggestions, .btn-logout-mini {
+  appearance: none; border: none; border-radius: 8px; padding: 8px 10px; font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.btn-login, .btn-login-bridge { background: #2563eb; color: #fff; }
+.btn-login:disabled, .btn-login-bridge:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-refresh-suggestions { background: #0f172a; color: #fff; width: 100%; margin-bottom: 8px; }
+.btn-logout-mini { background: #fff; border: 1px solid #cbd5e1; color: #334155; padding: 4px 8px; font-size: 10px; }
+.api-status { font-size: 10px; color: #64748b; padding: 0 10px 4px; }

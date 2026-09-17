@@ -2,6 +2,7 @@ import {
   BRIDGE_SOURCE,
   type FillComposerMessage,
   type HostToWidgetMessage,
+  type RequestDomMessagesMessage,
   type WidgetReadyMessage,
   type WidgetResizeMessage,
   type WidgetToHostMessage,
@@ -18,7 +19,9 @@ export function isHostMessage(data: unknown): data is HostToWidgetMessage {
   return (
     type === 'bridge-ready' ||
     type === 'fill-composer-result' ||
-    type === 'conversation-context'
+    type === 'conversation-context' ||
+    type === 'pancake-access-token' ||
+    type === 'dom-messages-result'
   );
 }
 
@@ -54,6 +57,15 @@ export function emitWidgetResize(height?: number): void {
   emitToHost(message);
 }
 
+export function emitRequestDomMessages(requestId: string): void {
+  const message: RequestDomMessagesMessage = {
+    source: BRIDGE_SOURCE,
+    type: 'request-dom-messages',
+    requestId,
+  };
+  emitToHost(message);
+}
+
 export function listenHostMessages(handler: (msg: HostToWidgetMessage) => void): () => void {
   const onMessage = (event: MessageEvent) => {
     if (!isHostMessage(event.data)) return;
@@ -61,4 +73,30 @@ export function listenHostMessages(handler: (msg: HostToWidgetMessage) => void):
   };
   window.addEventListener('message', onMessage);
   return () => window.removeEventListener('message', onMessage);
+}
+
+/** Promise wrapper for DOM messages fallback (B). */
+export function requestDomMessagesFromHost(timeoutMs = 2500): Promise<
+  import('@shared/bridge').DomBridgeMessage[]
+> {
+  const requestId = `dom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      stop();
+      reject(new Error('DOM messages timeout'));
+    }, timeoutMs);
+
+    const stop = listenHostMessages((msg) => {
+      if (msg.type !== 'dom-messages-result' || msg.requestId !== requestId) return;
+      window.clearTimeout(timer);
+      stop();
+      if (!msg.ok) {
+        reject(new Error(msg.error || 'DOM messages failed'));
+        return;
+      }
+      resolve(msg.messages || []);
+    });
+
+    emitRequestDomMessages(requestId);
+  });
 }
