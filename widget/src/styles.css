@@ -580,6 +580,7 @@ textarea {
   font-weight: 600;
 }
 
+.pronoun-select input[type='text'],
 .pronoun-select select {
   appearance: none;
   border: 1px solid var(--border);
@@ -589,10 +590,9 @@ textarea {
   font-size: 11px;
   font-weight: 600;
   color: var(--text);
-  background: #fff;
   width: 100%;
   min-width: 0;
-  max-width: 100%;
+  background: #fff;
 }
 
 .pronoun-current {

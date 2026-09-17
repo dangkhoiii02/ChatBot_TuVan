@@ -1,8 +1,6 @@
+import { useEffect, useState } from 'react';
 import type { PronounPair } from '../types';
 import { PRESETS, formatPair } from '../lib/applyPronouns';
-
-const LISTENERS = Array.from(new Set(PRESETS.map((p) => p.listener)));
-const SPEAKERS = Array.from(new Set(PRESETS.map((p) => p.speaker)));
 
 interface Props {
   value: PronounPair;
@@ -11,6 +9,30 @@ interface Props {
 }
 
 export function PronounBar({ value, onChange, compact }: Props) {
+  const [listenerDraft, setListenerDraft] = useState(value.listener);
+  const [speakerDraft, setSpeakerDraft] = useState(value.speaker);
+
+  useEffect(() => {
+    setListenerDraft(value.listener);
+    setSpeakerDraft(value.speaker);
+  }, [value.listener, value.speaker]);
+
+  const commitField = (field: 'listener' | 'speaker', draft: string) => {
+    const trimmed = draft.trim();
+    const nextValue = trimmed || value[field];
+    if (field === 'listener') setListenerDraft(nextValue);
+    else setSpeakerDraft(nextValue);
+    if (nextValue !== value[field]) {
+      onChange({ ...value, [field]: nextValue });
+    }
+  };
+
+  const applyPreset = (pair: PronounPair) => {
+    setListenerDraft(pair.listener);
+    setSpeakerDraft(pair.speaker);
+    onChange(pair);
+  };
+
   return (
     <div className={`pronoun-bar ${compact ? 'pronoun-bar-compact' : ''}`}>
       <div className="pronoun-bar-label">Xưng hô</div>
@@ -23,7 +45,7 @@ export function PronounBar({ value, onChange, compact }: Props) {
               type="button"
               role="listitem"
               className={`pronoun-chip ${active ? 'active' : ''}`}
-              onClick={() => onChange(p)}
+              onClick={() => applyPreset(p)}
             >
               {formatPair(p)}
             </button>
@@ -33,29 +55,39 @@ export function PronounBar({ value, onChange, compact }: Props) {
       <div className="pronoun-selects">
         <label className="pronoun-select">
           <span>Gọi</span>
-          <select
-            value={value.listener}
-            onChange={(e) => onChange({ ...value, listener: e.target.value })}
-          >
-            {LISTENERS.map((l) => (
-              <option key={l} value={l}>
-                {l}
-              </option>
-            ))}
-          </select>
+          <input
+            type="text"
+            value={listenerDraft}
+            placeholder={value.listener}
+            aria-label="Gọi"
+            onChange={(e) => setListenerDraft(e.target.value)}
+            onBlur={() => commitField('listener', listenerDraft)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                commitField('listener', listenerDraft);
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+          />
         </label>
         <label className="pronoun-select">
           <span>Xưng</span>
-          <select
-            value={value.speaker}
-            onChange={(e) => onChange({ ...value, speaker: e.target.value })}
-          >
-            {SPEAKERS.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
+          <input
+            type="text"
+            value={speakerDraft}
+            placeholder={value.speaker}
+            aria-label="Xưng"
+            onChange={(e) => setSpeakerDraft(e.target.value)}
+            onBlur={() => commitField('speaker', speakerDraft)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                commitField('speaker', speakerDraft);
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+          />
         </label>
       </div>
     </div>
