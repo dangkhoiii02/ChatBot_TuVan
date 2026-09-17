@@ -22,7 +22,14 @@
     let hideWaitingTimer = null;
 
     function showWaiting(show) {
-      waitingEl.classList.toggle('visible', !!show);
+      const on = !!show;
+      waitingEl.classList.toggle('visible', on);
+      waitingEl.style.pointerEvents = on ? 'auto' : 'none';
+      waitingEl.style.display = on ? 'flex' : 'none';
+      // Ensure iframe receives clicks once waiting is down
+      if (!on && frame) {
+        frame.style.pointerEvents = 'auto';
+      }
     }
 
     function loadWidget(url) {
@@ -34,7 +41,9 @@
       hideWaitingTimer = setTimeout(() => showWaiting(false), 2500);
     }
 
-    frame.addEventListener('load', () => {});
+    frame.addEventListener('load', () => {
+      showWaiting(false);
+    });
 
     btnSave.addEventListener('click', () => {
       const next = (urlInput.value || '').trim() || DEFAULT_WIDGET_URL;

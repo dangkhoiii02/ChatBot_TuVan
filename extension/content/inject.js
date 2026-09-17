@@ -174,7 +174,7 @@
     dragState = null;
     resizeState = null;
     if (panelEl) panelEl.classList.remove('tm-dragging');
-    if (shellIframe) shellIframe.style.pointerEvents = '';
+    if (shellIframe) shellIframe.style.pointerEvents = 'auto';
     schedulePersist();
     window.removeEventListener('pointermove', onPointerMove, true);
     window.removeEventListener('pointerup', onPointerUp, true);

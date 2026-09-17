@@ -103,6 +103,7 @@ body {
   position: absolute;
   inset: 0;
   display: none;
+  pointer-events: none;
   flex-direction: column;
   align-items: stretch;
   justify-content: center;
@@ -114,6 +115,7 @@ body {
 
 .waiting.visible {
   display: flex;
+  pointer-events: auto;
 }
 
 .waiting h2 {
