@@ -9,11 +9,9 @@ import { SuggestionsTab } from './components/tabs/SuggestionsTab';
 import { StudentTab } from './components/tabs/StudentTab';
 import { GradingTab } from './components/tabs/GradingTab';
 import {
-  MOCK_CONTEXT_INTENTS,
-  MOCK_CONTEXT_QUOTE,
   MOCK_STUDENT,
 } from './data/mockStudent';
-import type { PronounPair, Suggestion, TabId } from './types';
+import type { IntentCategory, PronounPair, Suggestion, TabId } from './types';
 import {
   emitFillComposer,
   emitWidgetReady,
@@ -61,6 +59,8 @@ export default function App() {
   const [bridgeReady, setBridgeReady] = useState(false);
   const [copyHint, setCopyHint] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [contextQuote, setContextQuote] = useState('');
+  const [contextIntents, setContextIntents] = useState<IntentCategory[]>([]);
   const [pageId, setPageId] = useState<string | null>(null);
   const [bridgeToken, setBridgeToken] = useState<string | null>(null);
   const [hasSession, setHasSession] = useState(() => Boolean(getSessionToken()));
@@ -114,6 +114,9 @@ export default function App() {
       try {
         messages = await getConversationMessages(convId, pgId);
         if (!messages.length) throw new Error('API messages empty');
+        const latest = [...messages].reverse().find((m) => m.text?.trim()) || messages[messages.length - 1];
+        if (latest?.text?.trim()) setContextQuote(latest.text.trim().slice(0, 180));
+        setContextIntents([]);
         setApiStatus(`A OK · ${messages.length} msg → suggestions…`);
       } catch (errA) {
         source = 'dom';
@@ -128,6 +131,9 @@ export default function App() {
           createdAt: m.createdAt,
         }));
         if (!messages.length) throw new Error('DOM messages empty');
+        const latest = [...messages].reverse().find((m) => m.text?.trim()) || messages[messages.length - 1];
+        if (latest?.text?.trim()) setContextQuote(latest.text.trim().slice(0, 180));
+        setContextIntents([]);
         setApiStatus(`B DOM OK · ${messages.length} msg → suggestions…`);
       }
 
@@ -167,7 +173,29 @@ export default function App() {
         return;
       }
       if (msg.type === 'conversation-context') {
-        setConversationId(msg.conversationId);
+        const nextId = msg.conversationId;
+        setConversationId((prev) => {
+          if (prev && nextId && prev !== nextId) {
+            setSuggestions([]);
+            setSelectedId(null);
+            setActiveDraft('');
+            setContextQuote('');
+            setContextIntents([]);
+            setUsingMock(false);
+            setApiStatus('Đã đổi hội thoại — bấm tạo gợi ý');
+            setClickBanner(null);
+          } else if (!prev && nextId) {
+            setApiStatus('Sẵn sàng — bấm “Tạo gợi ý từ hội thoại”');
+          } else if (!nextId) {
+            setSuggestions([]);
+            setSelectedId(null);
+            setActiveDraft('');
+            setContextQuote('');
+            setContextIntents([]);
+            setApiStatus('Chưa có conversationId từ bridge');
+          }
+          return nextId;
+        });
         setPageId(msg.pageId ?? null);
         if (msg.studentName) setStudentName(msg.studentName);
         return;
@@ -266,7 +294,7 @@ export default function App() {
       )}
       <div className="app-body">
         <StudentCard student={student} pronouns={pronouns} onPronounsChange={handlePronounsChange} />
-        <ContextStrip intents={MOCK_CONTEXT_INTENTS} quote={MOCK_CONTEXT_QUOTE} />
+        <ContextStrip intents={contextIntents} quote={contextQuote || 'Chưa có trích dẫn — bấm tạo gợi ý để lấy tin mới nhất'} />
         <TabBar active={tab} onChange={setTab} />
         <div className="tab-content" role="tabpanel">
           {tab === 'suggestions' && (
