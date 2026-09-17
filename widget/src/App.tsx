@@ -128,11 +128,9 @@ export default function App() {
       setUsingMock(false);
       setApiStatus(`OK (${source}) · ${messages.length} msg · ${next.length} gợi ý`);
     } catch (err) {
-      setUsingMock(true);
-      setSuggestions(MOCK_SUGGESTIONS);
-      setSelectedId(MOCK_SUGGESTIONS[0]?.id ?? null);
-      setActiveDraft(MOCK_SUGGESTIONS[0]?.text ?? '');
-      setApiStatus(`Fallback mock: ${err instanceof Error ? err.message : 'error'}`);
+      const message = err instanceof Error ? err.message : 'error';
+      // Keep current list; surface error instead of silent mock swap.
+      setApiStatus(`Lỗi gợi ý: ${message}`);
     } finally {
       setLoadingSuggestions(false);
     }
@@ -163,7 +161,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (hasSession && conversationId) void loadSuggestionsFromApi();
+    if (!hasSession) {
+      setApiStatus('Chưa login — đăng nhập để tạo gợi ý live');
+      return;
+    }
+    if (!conversationId) {
+      setApiStatus('Đã login — chờ conversationId từ bridge (mở hội thoại Pancake)');
+      return;
+    }
+    void loadSuggestionsFromApi();
   }, [hasSession, conversationId, loadSuggestionsFromApi]);
 
   const handlePronounsChange = (pair: PronounPair) => {
@@ -204,24 +210,6 @@ export default function App() {
     setActiveDraft(text);
   };
 
-  const handleCreate = () => {
-    if (hasSession && conversationId) {
-      void loadSuggestionsFromApi();
-      return;
-    }
-    const nextIndex = suggestions.length + 1;
-    const baseText = `Em ơi, thầy vừa tạo gợi ý #${nextIndex}. Em xem giúp thầy nhé.`;
-    const created: Suggestion = {
-      id: `sg-${Date.now()}`,
-      label: 'Khác',
-      category: 'Khác',
-      baseText,
-      text: rewriteSuggestionText(baseText, pronouns),
-    };
-    setSuggestions((prev) => [created, ...prev]);
-    setSelectedId(created.id);
-    setActiveDraft(created.text);
-  };
 
   const handleFill = () => {
     if (!activeDraft) return;
@@ -259,22 +247,36 @@ export default function App() {
         <div className="tab-content" role="tabpanel">
           {tab === 'suggestions' && (
             <>
-              {hasSession && (
-                <button
-                  type="button"
-                  className="btn-refresh-suggestions"
-                  disabled={loadingSuggestions}
-                  onClick={() => void loadSuggestionsFromApi()}
-                >
-                  {loadingSuggestions ? 'Đang tạo gợi ý…' : 'Tạo gợi ý từ hội thoại'}
-                </button>
-              )}
+              <button
+                type="button"
+                className="btn-refresh-suggestions"
+                disabled={loadingSuggestions || !hasSession || !conversationId}
+                title={
+                  !hasSession
+                    ? 'Cần login trước'
+                    : !conversationId
+                      ? 'Chưa có conversationId từ bridge'
+                      : 'Tạo gợi ý từ hội thoại (A BE → B DOM)'
+                }
+                onClick={() => {
+                  if (!hasSession) {
+                    setApiStatus('Cần login trước khi tạo gợi ý');
+                    return;
+                  }
+                  if (!conversationId) {
+                    setApiStatus('Chưa có conversationId từ bridge — mở đúng hội thoại Pancake');
+                    return;
+                  }
+                  void loadSuggestionsFromApi();
+                }}
+              >
+                {loadingSuggestions ? 'Đang tạo gợi ý…' : 'Tạo gợi ý từ hội thoại'}
+              </button>
               <SuggestionsTab
                 suggestions={suggestions}
                 selectedId={selectedId}
                 onSelect={handleSelectSuggestion}
                 onCopy={handleCopy}
-                onCreate={handleCreate}
               />
             </>
           )}
