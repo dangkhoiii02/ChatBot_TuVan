@@ -67,6 +67,7 @@ export default function App() {
   const [hasSession, setHasSession] = useState(() => Boolean(getSessionToken()));
   const [apiStatus, setApiStatus] = useState('Chưa gọi API gợi ý');
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [clickBanner, setClickBanner] = useState<string | null>(null);
   const [usingMock, setUsingMock] = useState(true);
 
   const hasSessionRef = useRef(hasSession);
@@ -270,16 +271,25 @@ export default function App() {
         <div className="tab-content" role="tabpanel">
           {tab === 'suggestions' && (
             <>
+              {clickBanner && (
+                <div className="click-banner" role="status" aria-live="assertive">
+                  {clickBanner}
+                </div>
+              )}
               <button
                 type="button"
-                className="btn-refresh-suggestions"
+                className={`btn-refresh-suggestions${loadingSuggestions ? ' is-running' : ''}`}
                 disabled={loadingSuggestions}
                 title="Tạo gợi ý từ hội thoại (A BE → B DOM)"
                 onClick={() => {
-                  // Sync UI in the same click tick before any await.
+                  const stamp = new Date().toLocaleTimeString();
+                  // Unmissable sync feedback in the same click tick.
+                  setClickBanner(`CLICK OK · đang chạy… (${stamp})`);
                   setLoadingSuggestions(true);
-                  setApiStatus('Đang lấy… (click)');
-                  void loadSuggestionsFromApi();
+                  setApiStatus(`Đang lấy… (click ${stamp})`);
+                  void loadSuggestionsFromApi().finally(() => {
+                    window.setTimeout(() => setClickBanner(null), 2500);
+                  });
                 }}
               >
                 {loadingSuggestions ? 'Đang tạo gợi ý…' : 'Tạo gợi ý từ hội thoại'}

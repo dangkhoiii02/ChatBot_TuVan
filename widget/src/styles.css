@@ -655,3 +655,22 @@ textarea {
 .btn-refresh-suggestions { background: #0f172a; color: #fff; width: 100%; margin-bottom: 8px; }
 .btn-logout-mini { background: #fff; border: 1px solid #cbd5e1; color: #334155; padding: 4px 8px; font-size: 10px; }
 .api-status { font-size: 10px; color: #64748b; padding: 0 10px 4px; }
+
+.click-banner {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  background: #f59e0b;
+  color: #111827;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+  border-radius: 8px;
+  border: 2px solid #b45309;
+  z-index: 50;
+  position: relative;
+}
+.btn-refresh-suggestions.is-running {
+  background: #b45309;
+}
