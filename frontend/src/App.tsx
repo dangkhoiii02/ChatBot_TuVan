@@ -24,9 +24,12 @@ import {
   getConversations,
   getHealth,
   getPages,
-  saveDemoReply
+  saveDemoReply,
+  logoutAppSession
 } from './services/api';
 import { getStaffUserId, setStaffUserId } from './lib/userId';
+import { clearAppSession, getSessionToken } from './lib/session';
+import { LoginGate } from './components/LoginGate';
 
 const CONVERSATION_LIMIT = 30;
 const MESSAGE_LIMIT = 30;
@@ -47,6 +50,10 @@ export const App: React.FC = () => {
   const [isSendingDemo, setIsSendingDemo] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [staffUserIdInput, setStaffUserIdInput] = useState<string>(() => getStaffUserId());
+  const [hasSession, setHasSession] = useState<boolean>(() => Boolean(getSessionToken()));
+  const allowDevUserHeader =
+    import.meta.env.VITE_ALLOW_DEV_USER_HEADER === '1' ||
+    import.meta.env.VITE_ALLOW_DEV_USER_HEADER === 'true';
   const [isMockMode, setIsMockMode] = useState<boolean>(true);
   const hasLoadedPagesRef = useRef(false);
 
@@ -713,6 +720,17 @@ export const App: React.FC = () => {
     setErrorMessage('');
   }, [staffUserIdInput]);
 
+  const handleLogout = useCallback(() => {
+    logoutAppSession();
+    clearAppSession();
+    setHasSession(false);
+    setErrorMessage('');
+  }, []);
+
+
+  if (!hasSession) {
+    return <LoginGate onLoggedIn={() => setHasSession(true)} />;
+  }
 
   return (
     <div className="app-container">
@@ -747,24 +765,29 @@ export const App: React.FC = () => {
           <span className="badge-status-pill">{conversations.length} hội thoại</span>
           {health && <span className="badge-status-pill">AI: {health.aiProvider}</span>}
 
-          <label className="badge-status-pill staff-user-id" title="Phase 1: X-User-Id (UUID trong PANCAKE_ACTIVE_USER_IDS)">
-            <span>User ID</span>
-            <input
-              type="text"
-              value={staffUserIdInput}
-              placeholder="UUID nhân viên"
-              aria-label="X-User-Id"
-              onChange={(e) => setStaffUserIdInput(e.target.value)}
-              onBlur={applyStaffUserId}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  applyStaffUserId();
-                  (e.target as HTMLInputElement).blur();
-                }
-              }}
-            />
-          </label>
+          {allowDevUserHeader && (
+            <label className="badge-status-pill staff-user-id" title="Dev only: X-User-Id khi ALLOW_DEV_USER_HEADER">
+              <span>User ID</span>
+              <input
+                type="text"
+                value={staffUserIdInput}
+                placeholder="UUID nhân viên"
+                aria-label="X-User-Id"
+                onChange={(e) => setStaffUserIdInput(e.target.value)}
+                onBlur={applyStaffUserId}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    applyStaffUserId();
+                    (e.target as HTMLInputElement).blur();
+                  }
+                }}
+              />
+            </label>
+          )}
+          <button type="button" className="btn-logout" onClick={handleLogout}>
+            Đăng xuất
+          </button>
 
           {errorMessage && <span className="badge-status-pill badge-error">Lỗi: {errorMessage}</span>}
         </div>

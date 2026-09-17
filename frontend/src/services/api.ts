@@ -1,3 +1,4 @@
+import { getSessionToken, setAppSession, clearAppSession } from '../lib/session';
 import { getStaffUserId } from '../lib/userId';
 import type {
   BackendChatMessage,
@@ -12,6 +13,35 @@ import type {
 type JsonRecord = Record<string, unknown>;
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+
+export type LoginResult = {
+  sessionToken: string;
+  tokenType: 'Bearer' | string;
+  expiresIn: number;
+  userId: string;
+  pageId: string;
+};
+
+export async function loginWithPancakeAccessToken(accessToken: string) {
+  const data = await requestJson<LoginResult>('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ accessToken }),
+    // login must not require existing session
+    headers: { 'X-Skip-Auth': '1' }
+  });
+  setAppSession({
+    sessionToken: data.sessionToken,
+    userId: data.userId,
+    pageId: data.pageId,
+    expiresAt: Date.now() + Math.max(60, data.expiresIn - 30) * 1000
+  });
+  return data;
+}
+
+export function logoutAppSession() {
+  clearAppSession();
+}
+
 
 export async function getHealth() {
   return requestJson<BackendHealth>('/api/health');
@@ -76,14 +106,25 @@ export async function saveDemoReply(input: {
 }
 
 async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const staffUserId = getStaffUserId();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(init.headers as Record<string, string> | undefined)
   };
-  // Phase 1: staff APIs require X-User-Id in PANCAKE_ACTIVE_USER_IDS (health may stay public).
-  if (staffUserId) {
-    headers['X-User-Id'] = staffUserId;
+  delete headers['X-Skip-Auth'];
+
+  const skipAuth = path.startsWith('/api/auth/login') || path.startsWith('/api/health');
+  const sessionToken = getSessionToken();
+  if (!skipAuth && sessionToken) {
+    headers.Authorization = `Bearer ${sessionToken}`;
+  }
+
+  // Phase-1 fallback only when ALLOW_DEV_USER_HEADER is enabled on FE + BE.
+  const allowDevHeader =
+    import.meta.env.VITE_ALLOW_DEV_USER_HEADER === '1' ||
+    import.meta.env.VITE_ALLOW_DEV_USER_HEADER === 'true';
+  if (!skipAuth && allowDevHeader && !sessionToken) {
+    const staffUserId = getStaffUserId();
+    if (staffUserId) headers['X-User-Id'] = staffUserId;
   }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -99,12 +140,11 @@ async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> 
       typeof payload.error === 'string'
         ? payload.error
         : `API error ${response.status}`;
-    if (response.status === 403 && (code === 'USER_NOT_ACTIVE' || !staffUserId)) {
-      throw new Error(
-        staffUserId
-          ? `USER_NOT_ACTIVE: ${message}`
-          : 'USER_NOT_ACTIVE: thiếu X-User-Id (set VITE_DEV_USER_ID hoặc ô User ID trên navbar)'
-      );
+    if (response.status === 401 || code === 'AUTH_REQUIRED') {
+      throw new Error(code ? `${code}: ${message}` : `AUTH_REQUIRED: ${message}`);
+    }
+    if (response.status === 403 && (code === 'USER_NOT_ACTIVE' || code === 'USER_NOT_ACTIVE')) {
+      throw new Error(`${code || 'USER_NOT_ACTIVE'}: ${message}`);
     }
     throw new Error(code ? `${code}: ${message}` : message);
   }
