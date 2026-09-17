@@ -33,6 +33,7 @@
 
   function looksRelevant(url) {
     var s = String(url || '');
+    if (/access_token=/i.test(s)) return true;
     return /pancake\.vn|pages\.fm|\/api\/v1\//i.test(s);
   }
 
@@ -75,12 +76,19 @@
     return m ? m[1].trim() : value.trim();
   }
 
+  var STORAGE_KEY = 'thay-minh:pancakeAccessToken';
+
   function emitToken(token) {
     if (!token || typeof token !== 'string') return;
     var t = token.trim();
     if (t.length < 16) return;
     if (t === lastEmitted) return;
     lastEmitted = t;
+    try {
+      sessionStorage.setItem(STORAGE_KEY, t);
+    } catch (_) {
+      /* ignore */
+    }
     try {
       window.postMessage(
         {
@@ -181,4 +189,21 @@
   } catch (_) {
     /* ignore */
   }
+
+  // Re-scan on SPA navigations / delayed network entries (F5 already covered by early hook + sessionStorage)
+  function rescan() {
+    try {
+      considerUrl(location.href);
+    } catch (_) {}
+    try {
+      var entries = performance.getEntriesByType('resource');
+      for (var i = 0; i < entries.length; i++) {
+        considerUrl(entries[i].name);
+      }
+    } catch (_) {}
+  }
+  window.addEventListener('hashchange', rescan);
+  window.addEventListener('popstate', rescan);
+  setInterval(rescan, 2000);
+
 })();

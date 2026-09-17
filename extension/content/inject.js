@@ -39,6 +39,8 @@
   let toggleBtn = null;
   let shellIframe = null;
   let resizeHandle = null;
+  /** @type {HTMLElement|null} */
+  let tokenBadgeEl = null;
 
   /** @type {{ left: number, top: number }} */
   let position = defaultPosition();
@@ -213,6 +215,19 @@
     e.stopPropagation();
   }
 
+  function setTokenBadge(hasToken) {
+    if (!tokenBadgeEl) return;
+    if (hasToken) {
+      tokenBadgeEl.textContent = 'Token ✓';
+      tokenBadgeEl.classList.add('tm-token-ok');
+      tokenBadgeEl.title = 'Đã bắt Pancake access token (không hiện raw)';
+    } else {
+      tokenBadgeEl.textContent = 'Chưa token';
+      tokenBadgeEl.classList.remove('tm-token-ok');
+      tokenBadgeEl.title = 'Chưa bắt được token — F5 Pancake hoặc paste trong widget';
+    }
+  }
+
   function buildUi() {
     hostEl = document.createElement('div');
     hostEl.id = HOST_ID;
@@ -291,6 +306,26 @@
         overflow: hidden;
         text-overflow: ellipsis;
       }
+      .tm-token-badge {
+        flex-shrink: 0;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        padding: 3px 7px;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        background: rgba(51, 65, 85, 0.7);
+        color: #94a3b8;
+        max-width: 110px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .tm-token-badge.tm-token-ok {
+        border-color: rgba(34, 197, 94, 0.45);
+        background: rgba(22, 101, 52, 0.35);
+        color: #86efac;
+      }
       .tm-drag-close {
         width: 26px;
         height: 26px;
@@ -359,6 +394,11 @@
     dragBar.innerHTML =
       '<span class="tm-drag-grip" aria-hidden="true">⠿</span>' +
       '<span class="tm-drag-title">Thầy Minh Copilot</span>';
+    tokenBadgeEl = document.createElement('span');
+    tokenBadgeEl.className = 'tm-token-badge';
+    tokenBadgeEl.setAttribute('aria-live', 'polite');
+    setTokenBadge(false);
+    dragBar.appendChild(tokenBadgeEl);
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'tm-drag-close';
@@ -402,6 +442,13 @@
       ThayMinhBridge.setTargetFrame(shellIframe);
       ThayMinhBridge.start();
     }
+    window.addEventListener('thay-minh-token-status', (ev) => {
+      const has =
+        ev && ev.detail && typeof ev.detail.hasToken === 'boolean'
+          ? ev.detail.hasToken
+          : false;
+      setTokenBadge(has);
+    });
 
     window.addEventListener('resize', () => {
       applyGeometry();

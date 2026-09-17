@@ -18,6 +18,7 @@
   const BRIDGE_VERSION = contract.BRIDGE_VERSION;
   const HOOK_SOURCE = 'thay-minh-copilot-hook';
   const SESSION_KEY = 'pancakeAccessToken';
+  const PAGE_STORAGE_KEY = 'thay-minh:pancakeAccessToken';
 
   /** @type {HTMLIFrameElement|null} */
   let targetFrame = null;
@@ -55,6 +56,34 @@
     } catch (_) {
       /* ignore */
     }
+    try {
+      sessionStorage.setItem(PAGE_STORAGE_KEY, token);
+    } catch (_) {
+      /* ignore */
+    }
+    notifyTokenStatus(true);
+  }
+
+  function notifyTokenStatus(hasToken) {
+    try {
+      window.dispatchEvent(
+        new CustomEvent('thay-minh-token-status', {
+          detail: { hasToken: !!hasToken },
+        })
+      );
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function readPageStorageToken() {
+    try {
+      const t = sessionStorage.getItem(PAGE_STORAGE_KEY);
+      if (t && String(t).trim().length >= 16) return String(t).trim();
+    } catch (_) {
+      /* ignore */
+    }
+    return null;
   }
 
   function pushAccessToken(token) {
@@ -197,8 +226,13 @@
         postToWidget({ type: 'bridge-ready', version: BRIDGE_VERSION });
         pushConversationContext();
         loadStoredToken((token) => {
-          const t = token || scanPerfForToken() || cachedAccessToken;
+          const t =
+            token ||
+            readPageStorageToken() ||
+            scanPerfForToken() ||
+            cachedAccessToken;
           if (t) pushAccessToken(t);
+          else notifyTokenStatus(false);
         });
         break;
 
@@ -282,8 +316,38 @@
     }
     ensureWatcher();
     loadStoredToken(() => {
-      scanPerfForToken();
+      const t =
+        cachedAccessToken || readPageStorageToken() || scanPerfForToken();
+      if (t) {
+        persistToken(t);
+        if (targetFrame) pushAccessToken(t);
+        else notifyTokenStatus(true);
+      } else {
+        notifyTokenStatus(false);
+      }
     });
+
+    // Poll page sessionStorage + perf (covers F5 race: hook wrote before bridge listened)
+    if (!global.__thayMinhTokenPoll) {
+      global.__thayMinhTokenPoll = setInterval(() => {
+        if (cachedAccessToken) return;
+        const t = readPageStorageToken() || scanPerfForToken();
+        if (t) {
+          persistToken(t);
+          if (targetFrame) pushAccessToken(t);
+        }
+      }, 1500);
+    }
+
+    const onNav = () => {
+      const t = readPageStorageToken() || scanPerfForToken();
+      if (t) {
+        persistToken(t);
+        if (targetFrame) pushAccessToken(t);
+      }
+    };
+    window.addEventListener('hashchange', onNav);
+    window.addEventListener('popstate', onNav);
   }
 
   function stop() {
