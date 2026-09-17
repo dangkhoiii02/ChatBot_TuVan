@@ -13,17 +13,34 @@ cp .env.example .env
 pnpm dev
 ```
 
-Dien cau hinh Pancake (single-page):
+### Pancake (single-page)
 
 - `PANCAKE_PAGE_ID`: page id dang dung.
-- `PANCAKE_PAGE_ACCESS_TOKEN`: page token lay truc tiep tu Pancake Settings -> Tools. Backend **khong** generate token tu user `access_token` nua.
-- `PANCAKE_ACTIVE_USER_IDS`: CSV UUID nhan vien duoc phep goi API. Moi request staff API can header `X-User-Id` nam trong list; thieu/ngoai list → `403` `USER_NOT_ACTIVE`.
+- `PANCAKE_PAGE_ACCESS_TOKEN`: page token (Settings -> Tools). Dung cho conversations/messages — **khong** generate tu user access token.
+- User Pancake access token chi dung luc `POST /api/auth/login`, khong luu lau dai.
 
-`GET /api/health` van public (khong can `X-User-Id`).
+### Auth (phase 2)
 
-`GET /api/pages` chi tra single-page tu `PANCAKE_PAGE_ID` (khong list nhieu page qua user token). Thieu `PANCAKE_PAGE_ID` → `501` `SINGLE_PAGE_MODE`.
+1. Client goi `POST /api/auth/login` body `{ "accessToken": "<pancake user token>" }`.
+2. Backend goi Pancake `GET /v1/pages?access_token=...`, tim page `PANCAKE_PAGE_ID`.
+3. Doc `uid` tu JWT accessToken; `uid` phai nam trong `active_user_ids` cua page do.
+4. Tra `sessionToken` (JWT ky bang `APP_SESSION_SECRET`) `{ userId, pageId }`.
+5. Staff API gan `Authorization: Bearer <sessionToken>`.
 
-De bat AI that, dat cac bien sau:
+Loi thuong gap:
+
+- Sai page / khong thay page → `403`
+- `uid` ngoai `active_user_ids` → `403` `USER_NOT_ACTIVE`
+- Thieu Bearer → `401` `AUTH_REQUIRED`
+
+`GET /api/health` van public. `POST /api/auth/login` public.
+
+Bien tuy chon (mac dinh tat):
+
+- `ENABLE_ENV_ACTIVE_USER_FALLBACK=1` + `PANCAKE_ACTIVE_USER_IDS` — dung CSV env khi page khong co `active_user_ids`.
+- `ALLOW_DEV_USER_HEADER=1` — cho phep phase-1 `X-User-Id` (chi khi id nam trong CSV env).
+
+### AI
 
 ```bash
 AI_PROVIDER=gemini
@@ -31,8 +48,6 @@ GEMINI_API_KEY=your_gemini_api_key
 GEMINI_MODEL=gemini-3.6-flash
 AI_KNOWLEDGE_DIR=../data
 ```
-
-`AI_KNOWLEDGE_DIR` mac dinh tro ve bo tai lieu cu gom `persona.md`, `policy.md`, `red_flags.json`, va `few_shots.json`.
 
 ## Scripts
 
@@ -46,20 +61,18 @@ pnpm start
 ## Endpoints
 
 - `GET /api/health` (public)
-- `GET /api/pages` (can `X-User-Id`)
-- `GET /api/conversations` (can `X-User-Id`)
-- `GET /api/conversations/:conversationId/messages` (can `X-User-Id`)
-- `POST /api/suggestions` (can `X-User-Id`)
-- `GET /api/demo-replies` (can `X-User-Id`)
-- `POST /api/demo-replies` (can `X-User-Id`)
+- `POST /api/auth/login` (public) — body `{ accessToken }`
+- `GET /api/pages` (Bearer session)
+- `GET /api/conversations` (Bearer session)
+- `GET /api/conversations/:conversationId/messages` (Bearer session)
+- `POST /api/suggestions` (Bearer session)
+- `GET|POST /api/demo-replies` (Bearer session)
 
 ## QA checklist
 
-- `pnpm typecheck` pass.
-- `pnpm build` pass.
-- `GET /api/health` tra `ok: true` (khong can header user).
-- Staff API thieu `X-User-Id` hoac id ngoai `PANCAKE_ACTIVE_USER_IDS` → `403` `USER_NOT_ACTIVE`.
-- Khi thieu `PANCAKE_PAGE_ACCESS_TOKEN` / `PANCAKE_PAGE_ID`, route conversation tra loi cau hinh ro rang va server khong crash.
-- `GET /api/pages` single-page khi co `PANCAKE_PAGE_ID`.
-- `POST /api/suggestions` tra 2-3 goi y. Neu `AI_PROVIDER=gemini`, backend dung Gemini + persona/policy/red flags tu `../data`; neu AI loi thi fallback ve few-shot/mock de demo khong bi dung.
-- `POST /api/demo-replies` chi append vao `data/demo_replies.jsonl`, khong goi Pancake.
+- `pnpm typecheck` / `pnpm build` pass.
+- Health khong can auth.
+- Login acc ∈ `active_user_ids` cua `PANCAKE_PAGE_ID` → `sessionToken`.
+- Login acc ngoai list / sai page → `403`.
+- Staff API voi Bearer hop le → OK; thieu/invalid → `401`.
+- Conversations van dung `PANCAKE_PAGE_ACCESS_TOKEN` only.

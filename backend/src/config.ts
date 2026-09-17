@@ -15,7 +15,16 @@ const envSchema = z.object({
   PANCAKE_BASE_URL: z.string().url().default('https://pages.fm/api'),
   PANCAKE_PAGE_ID: z.string().optional().default(''),
   PANCAKE_PAGE_ACCESS_TOKEN: z.string().optional().default(''),
+  /** Optional CSV fallback allowlist — only used when ENABLE_ENV_ACTIVE_USER_FALLBACK=1 */
   PANCAKE_ACTIVE_USER_IDS: z.string().optional().default(''),
+  ENABLE_ENV_ACTIVE_USER_FALLBACK: z
+    .enum(['0', '1', 'true', 'false'])
+    .optional()
+    .default('0'),
+  /** When 1, staff APIs also accept phase-1 X-User-Id against env CSV (dev only). */
+  ALLOW_DEV_USER_HEADER: z.enum(['0', '1', 'true', 'false']).optional().default('0'),
+  APP_SESSION_SECRET: z.string().optional().default(''),
+  APP_SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 60 * 12),
   PANCAKE_CONVERSATION_LIMIT: z.coerce.number().int().positive().max(50).default(30),
   PANCAKE_MESSAGE_LIMIT: z.coerce.number().int().positive().max(50).default(30),
   AI_PROVIDER: z.enum(['mock', 'claude', 'gemini']).default('mock'),
@@ -33,7 +42,7 @@ function resolveBackendPath(input: string) {
   return path.resolve(backendRoot, input);
 }
 
-function parseActiveUserIds(raw: string): Set<string> {
+function parseCsvIds(raw: string): Set<string> {
   return new Set(
     raw
       .split(',')
@@ -41,6 +50,12 @@ function parseActiveUserIds(raw: string): Set<string> {
       .filter(Boolean)
   );
 }
+
+function truthyFlag(value: string) {
+  return value === '1' || value === 'true';
+}
+
+const envActiveUserIds = parseCsvIds(env.PANCAKE_ACTIVE_USER_IDS);
 
 export const config = {
   port: env.PORT,
@@ -52,7 +67,15 @@ export const config = {
     conversationLimit: env.PANCAKE_CONVERSATION_LIMIT,
     messageLimit: env.PANCAKE_MESSAGE_LIMIT
   },
-  activeUserIds: parseActiveUserIds(env.PANCAKE_ACTIVE_USER_IDS),
+  auth: {
+    sessionSecret:
+      env.APP_SESSION_SECRET ||
+      (env.NODE_ENV === 'development' ? 'dev-app-session-secret-change-me' : ''),
+    sessionTtlSeconds: env.APP_SESSION_TTL_SECONDS,
+    envActiveUserIds,
+    enableEnvActiveUserFallback: truthyFlag(env.ENABLE_ENV_ACTIVE_USER_FALLBACK),
+    allowDevUserHeader: truthyFlag(env.ALLOW_DEV_USER_HEADER)
+  },
   ai: {
     provider: env.AI_PROVIDER,
     anthropicApiKey: env.ANTHROPIC_API_KEY,
@@ -72,6 +95,8 @@ export function getPancakeAuthMode() {
   return 'missing';
 }
 
-export function isActiveUserId(userId: string) {
-  return config.activeUserIds.has(userId);
+export function assertSessionSecretConfigured() {
+  if (!config.auth.sessionSecret) {
+    throw new Error('Missing APP_SESSION_SECRET');
+  }
 }
