@@ -13,13 +13,13 @@ function resolveAI(input = {}, env = process.env) {
   if (provider === 'claude') provider = 'anthropic';
   let apiKey = ((userConfigured ? input.apiKey : env.AI_API_KEY) || '').trim();
   let model = ((userConfigured ? input.model : env.AI_MODEL) || '').trim();
-  const baseUrl = ((userConfigured ? input.baseUrl : env.AI_BASE_URL) || '').trim();
+  const baseUrl = ((userConfigured ? input.baseUrl : (env.OPENAI_BASE_URL || env.AI_BASE_URL)) || '').trim();
   if (!userConfigured && !apiKey) {
     if (provider === 'gemini' || (provider === 'auto' && env.GEMINI_API_KEY)) {
       apiKey = env.GEMINI_API_KEY || ''; model ||= env.GEMINI_MODEL || '';
       provider = 'gemini';
     } else if (provider === 'anthropic') apiKey = env.ANTHROPIC_API_KEY || '';
-    else if (provider === 'openai') apiKey = env.OPENAI_API_KEY || '';
+    else if (provider === 'openai') { apiKey = env.OPENAI_API_KEY || ''; model ||= env.OPENAI_MODEL || 'gpt-5.5'; }
   }
   if (provider === 'mock' || apiKey === 'demo') return { provider: 'mock', apiKey: '', model, baseUrl: '' };
   if (provider === 'auto') {
@@ -41,14 +41,15 @@ function resolveAI(input = {}, env = process.env) {
   if (!['mock', 'gemini', 'anthropic', 'custom', ...Object.keys(endpoints)].includes(provider)) throw new Error('Nhà cung cấp AI không được hỗ trợ.');
   if (provider !== 'mock' && !model) throw new Error('Vui lòng nhập mã model được cấp quyền cho API key.');
   if (provider !== 'mock' && !apiKey) throw new Error('Vui lòng nhập API key của nhà cung cấp đã chọn.');
-  if (baseUrl && provider !== 'custom') throw new Error('Base URL chỉ dùng với nhà cung cấp custom.');
-  if (provider === 'custom') {
+  if (baseUrl && provider !== 'custom' && provider !== 'openai') throw new Error('Base URL chỉ dùng với nhà cung cấp custom hoặc openai.');
+  if (baseUrl && (provider === 'custom' || provider === 'openai')) {
     let url;
     try { url = new URL(baseUrl); } catch { throw new Error('Base URL không hợp lệ.'); }
     if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) throw new Error('Base URL phải là HTTPS, không chứa tài khoản, query hoặc fragment.');
-    // Custom destinations require deployment-owner authorization, preventing SSRF and key forwarding.
-    const allowed = (env.AI_ALLOWED_BASE_URLS || '').split(',').map(v => v.trim().replace(/\/+$/, '')).filter(Boolean);
-    if (!allowed.includes(baseUrl.replace(/\/+$/, ''))) throw new Error('Base URL chưa được quản trị viên cho phép trong AI_ALLOWED_BASE_URLS.');
+    if (provider === 'custom') {
+      const allowed = (env.AI_ALLOWED_BASE_URLS || '').split(',').map(v => v.trim().replace(/\/+$/, '')).filter(Boolean);
+      if (!allowed.includes(baseUrl.replace(/\/+$/, ''))) throw new Error('Base URL chưa được quản trị viên cho phép trong AI_ALLOWED_BASE_URLS.');
+    }
   }
   return { provider, apiKey, model, baseUrl: baseUrl.replace(/\/+$/, '') };
 }
@@ -73,15 +74,36 @@ async function requestAI(settings, system, prompt) {
     body = { model, messages: [{ role: 'system', content: instruction }, { role: 'user', content: prompt }] };
   }
   let response;
-  try {
-    response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), redirect: 'error', signal: AbortSignal.timeout(45000) });
-  } catch { throw new Error(`${provider}: không kết nối được hoặc quá thời gian chờ.`); }
+  const retryableStatuses = new Set([429, 500, 502, 503, 504]);
+  const maxAttempts = 4;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), redirect: 'error', signal: AbortSignal.timeout(45000) });
+    } catch {
+      if (attempt === maxAttempts - 1) throw new Error(`${provider}: không kết nối được hoặc quá thời gian chờ.`);
+      await delay(1000 * (2 ** attempt));
+      continue;
+    }
+    if (response.ok || !retryableStatuses.has(response.status) || attempt === maxAttempts - 1) break;
+    const retryAfterSeconds = Number(response.headers.get('retry-after'));
+    const retryDelay = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+      ? Math.min(retryAfterSeconds * 1000, 10000)
+      : 1000 * (2 ** attempt);
+    await delay(retryDelay);
+  }
   // Do not forward upstream bodies: some gateways echo credentials or request context.
-  if (!response.ok) throw new Error(`${provider}: API lỗi HTTP ${response.status}. Kiểm tra key, quyền model và hạn mức.`);
+  if (!response) throw new Error(`${provider}: không nhận được phản hồi từ API.`);
+  if (!response.ok) {
+    if (response.status === 429) throw new Error(`${provider}: API đang giới hạn lưu lượng hoặc đã hết hạn mức (HTTP 429).`);
+    if ([500, 502, 503, 504].includes(response.status)) throw new Error(`${provider}: dịch vụ AI đang tạm thời quá tải hoặc gián đoạn (HTTP ${response.status}). Hãy thử lại sau.`);
+    if ([401, 403].includes(response.status)) throw new Error(`${provider}: API key không hợp lệ hoặc không có quyền dùng model (HTTP ${response.status}).`);
+    if (response.status === 404) throw new Error(`${provider}: không tìm thấy model hoặc endpoint (HTTP 404).`);
+    throw new Error(`${provider}: API lỗi HTTP ${response.status}.`);
+  }
   const data = await response.json();
   const raw = provider === 'gemini' ? data.candidates?.[0]?.content?.parts?.filter(p => !p.thought).map(p => p.text || '').join('')
     : provider === 'anthropic' ? data.content?.filter(p => p.type === 'text').map(p => p.text).join('')
-    : data.choices?.[0]?.message?.content;
+      : data.choices?.[0]?.message?.content;
   if (typeof raw !== 'string' || !raw.trim()) throw new Error(`${provider}: phản hồi trống hoặc model không hỗ trợ chat văn bản.`);
   let parsed;
   try { parsed = JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')); }
@@ -89,4 +111,5 @@ async function requestAI(settings, system, prompt) {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !Array.isArray(parsed.replies) || !parsed.replies.length) throw new Error(`${provider}: thiếu danh sách gợi ý hợp lệ.`);
   return parsed;
 }
+function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 module.exports = { resolveAI, requestAI };

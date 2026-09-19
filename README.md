@@ -32,11 +32,11 @@ npm install
 npm run dev
 ```
 
-Truy cập `http://localhost:5180`. Chế độ demo dùng token `demo` ở môi trường development. Khi kết nối thật, cấu hình `PANCAKE_PAGE_ID`, `PANCAKE_PAGE_ACCESS_TOKEN`, `APP_SESSION_SECRET` trong `backend/.env`, rồi đăng nhập bằng Pancake user access token. Production không chấp nhận token demo; lỗi xác thực không tự chuyển thành đăng nhập demo.
+Truy cập `http://localhost:5180`. Chế độ demo chỉ hoạt động khi đặt `ALLOW_DEMO_MODE=1` ở backend và `VITE_ENABLE_DEMO_MODE=1` ở frontend. Khi kết nối thật, cấu hình `PANCAKE_PAGE_ID`, `PANCAKE_PAGE_ACCESS_TOKEN`, `APP_SESSION_SECRET` trong `backend/.env`, rồi đăng nhập bằng Pancake user access token. Production không chấp nhận token demo; lỗi xác thực không tự chuyển thành đăng nhập demo.
 
 ## API key, nhà cung cấp và model
 
-Trong màn hình đăng nhập hoặc **Cấu hình AI**, chọn nhà cung cấp, nhập API key và mã model chính xác. Widget cũng có mục **Cấu hình AI** riêng. Cấu hình được lưu trong localStorage của từng origin; web, widget và extension không tự chia sẻ key. Key cũ `gemini_api_key` được chuyển sang `ai_api_key` khi mở giao diện.
+FE web vẫn có thể chọn cấu hình hệ thống hoặc cấu hình riêng. Widget/extension luôn dùng cấu hình AI tại `backend/.env` và không nhận provider, API key hoặc model từ trình duyệt.
 
 | Lựa chọn | Giao thức |
 | --- | --- |
@@ -44,7 +44,6 @@ Trong màn hình đăng nhập hoặc **Cấu hình AI**, chọn nhà cung cấp
 | Anthropic Claude | Anthropic Messages |
 | OpenAI, DeepSeek, Groq, OpenRouter, Mistral, xAI | Chat Completions |
 | Khác / custom | Endpoint tương thích OpenAI Chat Completions |
-| Dữ liệu mẫu | Không gọi API ngoài |
 
 Không giới hạn danh sách model trong giao diện và không tự đổi model người dùng nhập. Hỗ trợ model **chat văn bản** tương thích các giao thức trên; model ảnh, âm thanh, embedding, hoặc API riêng khác cần adapter riêng. Tài khoản phải có quyền dùng model và hạn mức hợp lệ. Nội dung đính kèm chưa được gửi cho AI như ảnh/video.
 
@@ -76,7 +75,7 @@ AI_ALLOWED_BASE_URLS=https://gateway.example/v1
 
 Base URL là tiền tố trước `/chat/completions`, phải dùng HTTPS và nằm trong danh sách quản trị viên cho phép. Không chấp nhận redirect, tài khoản hoặc query trong URL. Khi triển khai, giữ thư mục `shared/` cạnh `backend/` vì cả source và bản build dùng module chung này.
 
-Nếu AI lỗi, backend mới trả dữ liệu dự phòng kèm `isDemoFallback` và lý do. Luồng cờ đỏ dùng bộ quy tắc cục bộ, không cần gọi AI. Demo cũ trả lỗi API trực tiếp khi có key nhưng gọi thất bại.
+Ở production, lỗi AI được trả về giao diện kèm mã yêu cầu để xử lý; không tự thay bằng nội dung mẫu. Dữ liệu mẫu chỉ được phép khi `ALLOW_DEMO_MODE=1`. Luồng cờ đỏ dùng bộ quy tắc cục bộ, không cần gọi AI.
 
 ## Widget và extension
 
@@ -88,7 +87,7 @@ cd ..
 bash extension/scripts/sync-widget-dist.sh
 ```
 
-Bản đóng gói cần `VITE_API_BASE_URL=http://127.0.0.1:4000` hoặc URL backend triển khai. Trong Chrome mở trang quản lý tiện ích, bật Developer mode, chọn **Load unpacked** và chọn thư mục `extension/`. Khi cập nhật bản đóng gói, bấm Reload extension. Không chạy `npm install/build` trong `extension/` vì đây không phải package Node.
+Bản đóng gói nhận `VITE_API_BASE_URL=https://api.example.com` lúc build. Widget không cho sửa URL backend hay cấu hình AI. Backend production phải khai báo ID extension trong `CORS_EXTENSION_IDS`, và manifest phải cho phép host backend triển khai. Trong Chrome mở trang quản lý tiện ích, bật Developer mode, chọn **Load unpacked** và chọn thư mục `extension/`. Khi cập nhật bản đóng gói, bấm Reload extension. Không chạy `npm install/build` trong `extension/` vì đây không phải package Node.
 
 ## Kiểm thử
 

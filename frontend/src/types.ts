@@ -15,6 +15,7 @@ export type ProfileField = {
   source: SourceOrigin;
   aiSuggestion?: string;
   conflictReason?: string;
+  evidence?: string;
 };
 
 export type CustomField = {
@@ -25,6 +26,11 @@ export type CustomField = {
   useInSuggestions: boolean;
   value: string;
   source: SourceOrigin;
+  options?: string[];
+  evidence?: string;
+  hidden?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type StudentProfile = {
@@ -48,9 +54,11 @@ export type AssignmentReviewOption = {
 export type MemoryItem = {
   id: string;
   content: string;
-  status: 'active' | 'ai_suggested' | 'history';
+  status: 'active' | 'ai_suggested' | 'review_due' | 'expired' | 'archived' | 'history';
   reason?: string;
+  reviewAt?: string;
   createdAt: string;
+  updatedAt?: string;
 };
 
 export type PancakePage = {
@@ -87,6 +95,7 @@ export type Conversation = {
   id: string;
   pageId: string;
   pageName?: string;
+  studentId?: string;
   studentName: string;
   avatar?: string;
   lastMessage: string;
@@ -102,6 +111,18 @@ export type Conversation = {
   profile?: StudentProfile;
   memories?: MemoryItem[];
   assignmentOptions?: AssignmentReviewOption[];
+  contextRevision?: number;
+  contextUpdatedAt?: string | null;
+};
+
+export type StudentContext = {
+  pageId: string;
+  studentId: string;
+  studentName: string;
+  profile: StudentProfile;
+  memories: MemoryItem[];
+  revision: number;
+  updatedAt: string | null;
 };
 
 export type BackendHealth = {
@@ -144,6 +165,7 @@ export type BackendChatMessage = {
 };
 
 export type BackendSuggestionResult = {
+  requestId?: string;
   intent: ConversationIntent;
   sensitivity: 'xanh' | 'vang' | 'do';
   flagReason?: string;
@@ -152,12 +174,4 @@ export type BackendSuggestionResult = {
   isDemoFallback?: boolean;
   redFlagTriggered?: boolean;
   suggestions: Suggestion[];
-};
-
-export type DemoReply = {
-  id: string;
-  conversationId: string;
-  content: string;
-  sourceSuggestionId?: string;
-  createdAt: string;
 };

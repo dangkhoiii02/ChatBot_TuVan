@@ -1,5 +1,5 @@
-export function AiProviderFields({ provider, baseUrl, onProvider, onBaseUrl }: {
-  provider: string; baseUrl: string; onProvider: (value: string) => void; onBaseUrl: (value: string) => void;
+export function AiProviderFields({ provider, baseUrl, onProvider, onBaseUrl, allowMock = false }: {
+  provider: string; baseUrl: string; onProvider: (value: string) => void; onBaseUrl: (value: string) => void; allowMock?: boolean;
 }) {
   return <>
     <label className="settings-field ai-field-row" style={{ display: 'grid', gap: 6 }}>
@@ -11,7 +11,7 @@ export function AiProviderFields({ provider, baseUrl, onProvider, onBaseUrl }: {
         <option value="groq">Groq</option><option value="openrouter">OpenRouter</option>
         <option value="mistral">Mistral</option><option value="xai">xAI</option>
         <option value="custom">Khác — API tương thích OpenAI</option>
-        <option value="mock">Dữ liệu mẫu (không gọi AI)</option>
+        {allowMock && <option value="mock">Dữ liệu mẫu (không gọi AI)</option>}
       </select>
     </label>
     {provider === 'custom' && <label className="settings-field ai-field-row" style={{ display: 'grid', gap: 6 }}>

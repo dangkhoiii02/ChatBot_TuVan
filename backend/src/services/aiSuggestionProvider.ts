@@ -1,8 +1,6 @@
 import { resolveAI, requestAI, type AISettings } from '../../../shared/ai-provider.cjs';
 import type { ChatMessage, SuggestionIntent, SuggestionResult } from '../types/api.js';
 import {
-  type FewShotSample,
-  findMatchingFewShot,
   loadAiKnowledgeBase,
   normalizeVietnamese
 } from './aiKnowledgeBase.js';
@@ -31,43 +29,43 @@ export async function createAISuggestions(
   input: CreateSuggestionsInput & { apiKey?: string; model?: string }
 ): Promise<SuggestionResult> {
   const knowledgeBase = await loadAiKnowledgeBase();
-  const latestStudentText = getLatestStudentText(input.messages);
+  const latestStudentText = getPendingStudentText(input.messages);
   const transcript = buildTranscript(input.messages);
-  const redFlagCheck = checkRedFlags(`${latestStudentText}\n${transcript}`, knowledgeBase.redFlags);
+  const redFlagCheck = checkRedFlags(`${input.teacherInput || ''}\n${latestStudentText}\n${transcript}`, knowledgeBase.redFlags);
 
-  if (!latestStudentText.trim() && !transcript.trim()) {
+  if (input.mode === 'teacher_review') {
+    if (!input.teacherInput?.trim()) {
+      throw new Error('Chưa có nội dung nhận xét của giáo viên để chấm bài.');
+    }
+  } else if (!latestStudentText.trim() && !transcript.trim()) {
     throw new Error('Không có nội dung hội thoại để tạo gợi ý.');
   }
 
   const settings = resolveAI(input);
 
-  try {
-    const parsedResult = await requestSuggestions({
-      latestStudentText,
-      transcript,
-      persona: knowledgeBase.persona,
-      policy: knowledgeBase.policy,
-      redFlagsRaw: knowledgeBase.redFlagsRaw,
-      settings
-    });
+  const parsedResult =
+    input.mode === 'teacher_review'
+      ? await requestTeacherReview({
+          teacherInput: input.teacherInput!.trim(),
+          pronouns: input.pronouns,
+          transcript,
+          persona: knowledgeBase.persona,
+          settings
+        })
+      : await requestSuggestions({
+          latestStudentText,
+          transcript,
+          persona: knowledgeBase.persona,
+          policy: knowledgeBase.policy,
+          redFlagsRaw: knowledgeBase.redFlagsRaw,
+          settings
+        });
 
-    const normalized = normalizeAIResult(input, parsedResult, latestStudentText, redFlagCheck);
-    return {
-      ...normalized,
-      provider: `${settings.provider} (${settings.model})`
-    };
-  } catch (error) {
-    const fallback = createFewShotFallback(
-      input,
-      knowledgeBase.fewShots,
-      latestStudentText || transcript,
-      redFlagCheck,
-      `AI chưa trả về được kết quả hợp lệ: ${getErrorMessage(error)}`
-    );
-
-    if (fallback) return fallback;
-    throw error;
-  }
+  const normalized = normalizeAIResult(input, parsedResult, latestStudentText, redFlagCheck);
+  return {
+    ...normalized,
+    provider: `${settings.provider} (${settings.model})`
+  };
 }
 
 async function requestSuggestions(input: {
@@ -118,6 +116,64 @@ ${input.transcript || '[Không có lịch sử hội thoại]'}
   return requestAI(input.settings, systemInstructionText, userPrompt);
 }
 
+async function requestTeacherReview(input: {
+  teacherInput: string;
+  pronouns?: { senderCall: string; recipientCall: string };
+  transcript: string;
+  persona: string;
+  settings: AISettings;
+}) {
+  const senderCall = input.pronouns?.senderCall || 'Thầy';
+  const recipientCall = input.pronouns?.recipientCall || 'Em';
+
+  const systemInstructionText = `
+Bạn là AI Trợ Lý của "Thầy Minh Piano" - giảng viên dạy đàn Piano.
+Nhiệm vụ của bạn là nhận xét chấm bài cho học viên dựa CHÍNH XÁC trên ghi chú lỗi chuyên môn do Giáo viên trực tiếp cung cấp.
+
+=== HỒ SƠ PHONG CÁCH (PERSONA) ===
+${input.persona}
+
+=== NGUYÊN TẮC BẮT BUỘC KHI CHẤM BÀI (UC-03) ===
+1. DỮ KIỆN CHUYÊN MÔN:
+   - CHỈ sử dụng thông tin lỗi kỹ thuật có trong "GHI CHÚ NHẬN XÉT CỦA GIÁO VIÊN".
+   - TUYỆT ĐỐI KHÔNG tự tiện bịa thêm lỗi ngón, lỗi phím khác nếu giáo viên không nhắc đến.
+   - TUYỆT ĐỐI KHÔNG bịa mốc thời gian trong video (ví dụ: 0:35, 1:20...) trừ khi giáo viên đã ghi rõ trong ghi chú.
+   - TUYỆT ĐỐI KHÔNG khẳng định AI đã xem video/clip.
+2. ĐẠI TỪ XƯNG HÔ:
+   - Người gửi (Thầy Minh): xưng là "${senderCall}"
+   - Người nhận (Học viên): gọi là "${recipientCall}"
+3. PHƯƠNG ÁN TRẢ LỜI:
+   - Sinh ĐÚNG 3 phương án phản hồi với 3 sắc thái sư phạm:
+     * Phương án 1 ("Sư phạm & Kỹ thuật"): Hướng dẫn bài bản, giải thích rõ lỗi kỹ thuật và phương pháp sửa.
+     * Phương án 2 ("Rõ việc & Trọng tâm"): Ngắn gọn, chỉ ra điểm cần sửa ngay và tần suất/thời lượng tập luyện.
+     * Phương án 3 ("Động viên & Khích lệ"): Nhẹ nhàng, ghi nhận nỗ lực của học viên, khích lệ tinh thần tiếp tục rèn luyện.
+4. Giọng điệu của Thầy Minh:
+   - Thân thiện, gần gũi, tự nhiên miền Nam: "nè", "nhen", "á", "nha", "hengg", emoji vừa phải.
+5. CẤU TRÚC JSON TRẢ VỀ:
+   Trả về duy nhất JSON hợp lệ (không có markdown backticks, không giải thích ngoài JSON):
+{
+  "intent": "assignment_feedback",
+  "sensitivity": "vang",
+  "flag_reason": "Nhận xét chấm bài theo ghi chú của giáo viên.",
+  "replies": [
+    { "tone": "Sư phạm & Kỹ thuật", "content": "..." },
+    { "tone": "Rõ việc & Trọng tâm", "content": "..." },
+    { "tone": "Động viên & Khích lệ", "content": "..." }
+  ]
+}
+`.trim();
+
+  const userPrompt = `
+GHI CHÚ NHẬN XÉT CỦA GIÁO VIÊN:
+"${input.teacherInput}"
+
+NGỮ CẢNH HỘI THOẠI GẦN NHẤT:
+${input.transcript || '[Không có lịch sử trước đó]'}
+`.trim();
+
+  return requestAI(input.settings, systemInstructionText, userPrompt);
+}
+
 function normalizeAIResult(
   input: CreateSuggestionsInput,
   parsedResult: AIParsedResponse,
@@ -128,6 +184,29 @@ function normalizeAIResult(
 
   if (replies.length !== 3) {
     throw new Error('AI phải trả về đủ 3 gợi ý hợp lệ.');
+  }
+
+  if (input.mode === 'teacher_review') {
+    return {
+      intent: 'assignment_feedback',
+      sensitivity: 'vang',
+      flagReason:
+        typeof parsedResult.flag_reason === 'string'
+          ? parsedResult.flag_reason
+          : 'Nhận xét chấm bài theo ghi chú của giáo viên.',
+      analysis:
+        typeof parsedResult.analysis === 'string'
+          ? parsedResult.analysis
+          : 'AI đã diễn đạt thành công 3 phương án chấm bài sư phạm.',
+      provider: 'ai',
+      redFlagTriggered: false,
+      suggestions: replies.map((reply, index) => ({
+        id: `sug-${input.conversationId}-tr-${index + 1}`,
+        tone: reply.tone,
+        content: reply.content,
+        usedFacts: input.teacherInput ? [input.teacherInput.trim()] : undefined
+      }))
+    };
   }
 
   const baseSensitivity = coerceSensitivity(parsedResult.sensitivity);
@@ -150,37 +229,6 @@ function normalizeAIResult(
     suggestions: replies.map((reply, index) => ({
       id: `sug-${input.conversationId}-ai-${index + 1}`,
       tone: reply.tone,
-      content: reply.content
-    }))
-  };
-}
-
-function createFewShotFallback(
-  input: CreateSuggestionsInput,
-  samples: FewShotSample[],
-  text: string,
-  redFlagCheck: RedFlagCheck,
-  reason: string
-): SuggestionResult | null {
-  const matchedSample = findMatchingFewShot(samples, text);
-  if (!matchedSample) return null;
-
-  const replies = normalizeReplies(matchedSample.model_replies).slice(0, 3);
-  if (!replies.length) return null;
-
-  const sensitivity = redFlagCheck.isRed ? 'do' : coerceSensitivity(matchedSample.sensitivity || matchedSample.category);
-
-  return {
-    intent: redFlagCheck.isRed ? 'sensitive' : coerceIntent(undefined, sensitivity, text),
-    sensitivity,
-    flagReason: redFlagCheck.isRed ? redFlagCheck.reason : matchedSample.flag_reason || 'Mẫu dữ liệu thực tế.',
-    analysis: `[Fallback dữ liệu mẫu]: ${reason}`,
-    provider: 'few-shot',
-    isDemoFallback: true,
-    redFlagTriggered: redFlagCheck.isRed,
-    suggestions: replies.map((reply, index) => ({
-      id: `sug-${input.conversationId}-sample-${index + 1}`,
-      tone: reply.tone || fallbackTones[index] || `Góc nhìn ${index + 1}`,
       content: reply.content
     }))
   };
@@ -214,8 +262,11 @@ function normalizeReplies(replies: unknown) {
     .filter((reply) => reply.content);
 }
 
-function getLatestStudentText(messages: Array<Pick<ChatMessage, 'sender' | 'text'>>) {
-  return [...messages].reverse().find((message) => message.sender === 'student' && message.text.trim())?.text ?? '';
+function getPendingStudentText(messages: Array<Pick<ChatMessage, 'sender' | 'text'>>) {
+  return messages
+    .filter((message) => message.sender === 'student' && message.text.trim())
+    .map((message) => message.text.trim())
+    .join('\n');
 }
 
 function buildTranscript(messages: CreateSuggestionsInput['messages']) {
@@ -245,8 +296,4 @@ function coerceIntent(value: unknown, sensitivity: 'xanh' | 'vang' | 'do', text:
   }
 
   return normalizedText ? 'check_in' : 'unknown';
-}
-
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : 'Lỗi không xác định';
 }

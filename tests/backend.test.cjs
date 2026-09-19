@@ -5,6 +5,7 @@ process.env.NODE_ENV = 'test';
 process.env.APP_SESSION_SECRET = 'test-session-secret';
 process.env.AI_PROVIDER = 'mock';
 process.env.PANCAKE_PAGE_ID = '';
+process.env.ALLOW_DEMO_MODE = '1';
 
 test('HTTP validation, authorization and legacy-header CORS', async () => {
   const { createApp } = await import('../backend/dist/app.js');
@@ -42,6 +43,81 @@ test('demo cannot authenticate in production; arbitrary tokens cannot become dem
     config.nodeEnv = 'development';
     await assert.rejects(loginWithPancakeUserToken('invalid-token'), /PANCAKE_PAGE_ID/);
   } finally { config.nodeEnv = original; }
+});
+
+test('student context persists profile, memory and custom field with revision conflicts', async () => {
+  const { createApp } = await import('../backend/dist/app.js');
+  const app = createApp();
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const login = await fetch(base + '/api/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accessToken: 'demo' }),
+    });
+    const { sessionToken, pageId } = await login.json();
+    const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` };
+    const studentId = `student-${Date.now()}`;
+    const read = await fetch(`${base}/api/students/${studentId}/context?pageId=${encodeURIComponent(pageId)}&studentName=Lan`, { headers });
+    assert.equal(read.status, 200);
+    const initial = await read.json();
+    assert.equal(initial.revision, 0);
+
+    const memory = await fetch(`${base}/api/students/${studentId}/memories`, {
+      method: 'POST', headers,
+      body: JSON.stringify({ pageId, studentName: 'Lan', revision: 0, content: 'Chỉ học sau 20h' }),
+    });
+    assert.equal(memory.status, 201);
+    const afterMemory = await memory.json();
+    assert.equal(afterMemory.revision, 1);
+    assert.equal(afterMemory.memories[0].content, 'Chỉ học sau 20h');
+
+    const conflict = await fetch(`${base}/api/students/${studentId}/memories`, {
+      method: 'POST', headers,
+      body: JSON.stringify({ pageId, studentName: 'Lan', revision: 0, content: 'Bản ghi trễ' }),
+    });
+    assert.equal(conflict.status, 409);
+    assert.equal((await conflict.json()).code, 'REVISION_CONFLICT');
+
+    const custom = await fetch(`${base}/api/students/${studentId}/custom-fields`, {
+      method: 'POST', headers,
+      body: JSON.stringify({
+        pageId, studentName: 'Lan', revision: 1,
+        field: { name: 'Tốc độ học', type: 'select', fillMode: 'manual', useInSuggestions: true, value: '', options: ['Nhanh', 'Vừa', 'Chậm'] },
+      }),
+    });
+    assert.equal(custom.status, 201);
+    const afterCustom = await custom.json();
+    assert.equal(afterCustom.profile.customFields[0].name, 'Tốc độ học');
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test('teacher review fallback only uses the teacher fact when demo mode is explicit', async () => {
+  const { createApp } = await import('../backend/dist/app.js');
+  const app = createApp();
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const login = await fetch(base + '/api/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accessToken: 'demo' }),
+    });
+    const { sessionToken } = await login.json();
+    const response = await fetch(base + '/api/suggestions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
+      body: JSON.stringify({ conversationId: 'teacher-review-test', mode: 'teacher_review', teacherInput: 'Sai nhịp', messages: [] }),
+    });
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.equal(result.suggestions.length, 3);
+    assert.deepEqual(result.suggestions[0].usedFacts, ['Sai nhịp']);
+    assert.ok(result.suggestions.every(item => !/10-15|tiến bộ|đã xem|xem qua/i.test(item.content)));
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
 });
 
 test('legacy demo uses the shared provider and preserves custom model IDs', async () => {

@@ -82,17 +82,23 @@ export function adaptPronouns(
     'gui'
   );
 
-  return cleaned.replace(regex, (match) => {
-    const replacement = tokenMap.get(match.toLowerCase());
-    if (!replacement) return match;
+  return transformOutsideQuotes(cleaned, (segment) =>
+    segment.replace(regex, (match) => {
+      const replacement = tokenMap.get(match.toLowerCase());
+      if (!replacement) return match;
 
-    // Preserve casing
-    if (match === match.toUpperCase() && match.length > 1) {
-      return replacement.toUpperCase();
-    }
-    if (match[0] === match[0].toUpperCase()) {
-      return replacement.charAt(0).toUpperCase() + replacement.slice(1);
-    }
-    return replacement.toLowerCase();
-  });
+      if (match === match.toUpperCase() && match.length > 1) {
+        return replacement.toUpperCase();
+      }
+      if (match[0] === match[0].toUpperCase()) {
+        return replacement.charAt(0).toUpperCase() + replacement.slice(1);
+      }
+      return replacement.toLowerCase();
+    })
+  );
+}
+
+function transformOutsideQuotes(text: string, transform: (segment: string) => string) {
+  const parts = text.split(/("[^"\n]*"|“[^”\n]*”|'[^'\n]*')/gu);
+  return parts.map((part, index) => (index % 2 === 1 ? part : transform(part))).join('');
 }

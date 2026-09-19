@@ -1,11 +1,21 @@
-import { readAISettings } from '../../../shared/ai-settings';
 import { clearAppSession, getSessionToken, setAppSession } from './session';
 
 type JsonRecord = Record<string, unknown>;
 
 const API_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ||
-  'http://127.0.0.1:4000';
+  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') || '';
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly code: string,
+    public readonly requestId?: string
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
 
 export type LoginResult = {
   sessionToken: string;
@@ -32,6 +42,48 @@ export type SuggestionApiResult = {
   intent?: string;
   sensitivity?: string;
   suggestions: Array<{ id: string; tone: string; content: string }>;
+};
+
+export type StudentContextApi = {
+  pageId: string;
+  studentId: string;
+  studentName: string;
+  revision: number;
+  updatedAt: string | null;
+  profile: {
+    recipientCall: string;
+    senderCall: string;
+    nextAction: string;
+    specialNotes: string;
+    studyNotes: string;
+    dataStatus: 'saved' | 'ai_suggested' | 'unclear' | 'conflict';
+    fields: Array<{ key: string; label: string; value: string; source: string; evidence?: string }>;
+    customFields: Array<{
+      id: string;
+      name: string;
+      type: 'text' | 'number' | 'select';
+      value: string;
+      options?: string[];
+      useInSuggestions: boolean;
+      hidden?: boolean;
+    }>;
+  };
+  memories: Array<{
+    id: string;
+    content: string;
+    status: 'active' | 'ai_suggested' | 'review_due' | 'expired' | 'archived';
+    reason?: string;
+    createdAt: string;
+  }>;
+};
+
+export type ConversationSummaryApi = {
+  id: string;
+  pageId: string;
+  customerId?: string;
+  customerName: string;
+  lastMessage?: string;
+  updatedAt?: string;
 };
 
 export async function loginWithPancakeAccessToken(accessToken: string) {
@@ -66,6 +118,41 @@ export async function getConversationMessages(
   return data.items;
 }
 
+export async function resolveConversationByContext(
+  pageId: string,
+  input: { studentName?: string | null; latestMessage?: string | null },
+) {
+  const search = new URLSearchParams({ pageIds: pageId, limit: '50' });
+  const data = await requestJson<{ items: ConversationSummaryApi[] }>(
+    `/api/conversations?${search.toString()}`
+  );
+  const target = normalizeText(input.studentName || '');
+  if (target) {
+    const exact = data.items.filter((item) => normalizeText(item.customerName) === target);
+    if (exact.length) return exact[0];
+    const close = data.items.filter((item) => {
+      const candidate = normalizeText(item.customerName);
+      return target.length >= 3 && candidate.length >= 3 &&
+        (candidate.includes(target) || target.includes(candidate));
+    });
+    if (close.length === 1) return close[0];
+  }
+  const latest = normalizeText(input.latestMessage || '');
+  if (latest.length >= 4) {
+    const messageMatches = data.items.filter((item) => {
+      const candidate = normalizeText(item.lastMessage || '');
+      return candidate.length >= 4 &&
+        (candidate === latest || candidate.includes(latest) || latest.includes(candidate));
+    });
+    if (messageMatches.length === 1) return messageMatches[0];
+  }
+  return null;
+}
+
+function normalizeText(value: string) {
+  return value.normalize('NFKC').toLocaleLowerCase('vi').replace(/\s+/g, ' ').trim();
+}
+
 export async function createSuggestions(input: {
   conversationId: string;
   messages: Array<{
@@ -78,17 +165,118 @@ export async function createSuggestions(input: {
     createdAt: string;
   }>;
 }) {
-  const settings = readAISettings();
-  const ai = settings.apiKey || settings.model || settings.provider === 'mock' ? settings : {};
   return requestJson<SuggestionApiResult>('/api/suggestions', {
     method: 'POST',
-    body: JSON.stringify({ ...input, ...ai }),
+    body: JSON.stringify(input),
   });
 }
 
+export async function createTeacherReview(input: {
+  conversationId: string;
+  teacherInput: string;
+  pronouns: { speaker: string; listener: string };
+  messages: ApiChatMessage[];
+}) {
+  return requestJson<SuggestionApiResult>('/api/suggestions', {
+    method: 'POST',
+    body: JSON.stringify({
+      conversationId: input.conversationId,
+      mode: 'teacher_review',
+      teacherInput: input.teacherInput,
+      pronouns: {
+        senderCall: input.pronouns.speaker,
+        recipientCall: input.pronouns.listener,
+        label: `${input.pronouns.speaker} — ${input.pronouns.listener}`
+      },
+      messages: input.messages
+    })
+  });
+}
+
+export async function getStudentContext(input: {
+  pageId: string;
+  studentId: string;
+  studentName: string;
+  signal?: AbortSignal;
+}) {
+  const query = new URLSearchParams({ pageId: input.pageId, studentName: input.studentName });
+  return requestJson<StudentContextApi>(
+    `/api/students/${encodeURIComponent(input.studentId)}/context?${query.toString()}`,
+    { signal: input.signal }
+  );
+}
+
+export async function saveStudentProfile(input: {
+  context: StudentContextApi;
+  profile: StudentContextApi['profile'];
+}) {
+  const { customFields: _customFields, ...profile } = input.profile;
+  return requestJson<StudentContextApi>(
+    `/api/students/${encodeURIComponent(input.context.studentId)}/profile`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({
+        pageId: input.context.pageId,
+        studentName: input.context.studentName,
+        revision: input.context.revision,
+        profile
+      })
+    }
+  );
+}
+
+export async function createStudentMemory(input: {
+  context: StudentContextApi;
+  content: string;
+  reason?: string;
+}) {
+  return requestJson<StudentContextApi>(
+    `/api/students/${encodeURIComponent(input.context.studentId)}/memories`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        pageId: input.context.pageId,
+        studentName: input.context.studentName,
+        revision: input.context.revision,
+        content: input.content,
+        reason: input.reason
+      })
+    }
+  );
+}
+
+export async function updateStudentCustomField(input: {
+  context: StudentContextApi;
+  fieldId: string;
+  value: string;
+}) {
+  return requestJson<StudentContextApi>(
+    `/api/students/${encodeURIComponent(input.context.studentId)}/custom-fields/${encodeURIComponent(input.fieldId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({
+        pageId: input.context.pageId,
+        studentName: input.context.studentName,
+        revision: input.context.revision,
+        value: input.value
+      })
+    }
+  );
+}
+
 async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const apiBaseUrl = API_BASE_URL || (import.meta.env.DEV ? 'http://127.0.0.1:4000' : '');
+  if (!apiBaseUrl && location.protocol === 'chrome-extension:') {
+    throw new ApiError(
+      'Widget chưa được build với VITE_API_BASE_URL.',
+      0,
+      'API_BASE_URL_MISSING'
+    );
+  }
+  const requestId = crypto.randomUUID ? crypto.randomUUID() : `req-${Date.now()}`;
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'X-Request-Id': requestId,
     ...(init.headers as Record<string, string> | undefined),
   };
   delete headers['X-Skip-Auth'];
@@ -99,7 +287,7 @@ async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> 
     headers.Authorization = `Bearer ${sessionToken}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
     headers,
   });
@@ -108,8 +296,18 @@ async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> 
     const code = typeof payload.code === 'string' ? payload.code : '';
     const message =
       typeof payload.error === 'string' ? payload.error : `API error ${response.status}`;
-    throw new Error(code ? `${code}: ${message}` : message);
+    if (response.status === 401 || code === 'AUTH_REQUIRED' || code === 'SESSION_EXPIRED') {
+      clearAppSession();
+      window.dispatchEvent(new Event('ttd:session-expired'));
+    }
+    throw new ApiError(
+      message,
+      response.status,
+      code || `HTTP_${response.status}`,
+      typeof payload.requestId === 'string'
+        ? payload.requestId
+        : response.headers.get('X-Request-Id') || requestId
+    );
   }
   return payload as T;
 }
-

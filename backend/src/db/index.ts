@@ -89,24 +89,44 @@ function initSchema(db: DatabaseSync) {
       conversation_id TEXT,
       input_text TEXT NOT NULL,
       context_json TEXT,
+      knowledge_version_id TEXT,
       model TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'succeeded',
       sensitivity TEXT CHECK (sensitivity IN ('xanh', 'vang', 'do')),
       flag_reason TEXT,
       replies_json TEXT,
       latency_ms INTEGER,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      updated_at TEXT
     );
 
-    CREATE TABLE IF NOT EXISTS demo_replies (
-      id TEXT PRIMARY KEY,
-      conversation_id TEXT NOT NULL,
-      content TEXT NOT NULL,
-      source_suggestion_id TEXT,
-      created_at TEXT NOT NULL
+    CREATE TABLE IF NOT EXISTS student_contexts (
+      page_id TEXT NOT NULL,
+      student_id TEXT NOT NULL,
+      student_name TEXT NOT NULL,
+      profile_json TEXT NOT NULL,
+      memories_json TEXT NOT NULL,
+      custom_fields_json TEXT NOT NULL,
+      revision INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (page_id, student_id)
     );
 
     CREATE INDEX IF NOT EXISTS idx_conversations_page_id ON conversations(page_id);
     CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
-    CREATE INDEX IF NOT EXISTS idx_demo_replies_conversation_id ON demo_replies(conversation_id);
+    CREATE INDEX IF NOT EXISTS idx_student_contexts_updated_at ON student_contexts(updated_at);
   `);
+
+  // Forward-only compatibility for databases created by older demo builds.
+  ensureColumn(db, 'generations', 'conversation_id', 'TEXT');
+  ensureColumn(db, 'generations', 'knowledge_version_id', 'TEXT');
+  ensureColumn(db, 'generations', 'status', "TEXT NOT NULL DEFAULT 'succeeded'");
+  ensureColumn(db, 'generations', 'updated_at', 'TEXT');
+}
+
+function ensureColumn(db: DatabaseSync, table: string, column: string, definition: string) {
+  const tableInfo = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (tableInfo.some((item) => item.name === column)) return;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition};`);
 }

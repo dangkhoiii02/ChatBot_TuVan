@@ -35,6 +35,7 @@ export type ConversationContextMessage = {
   source: typeof BRIDGE_SOURCE;
   type: 'conversation-context';
   conversationId: string | null;
+  studentId?: string | null;
   studentName?: string | null;
   pageId?: string | null;
   url?: string;

@@ -26,12 +26,18 @@ npm run build
 - Default pair: Thầy - Em. Presets include Em-Chị, Thầy-Chị, Em-Anh, Thầy-Anh.
 - Current pair shown on `StudentCard`; same control in Student tab.
 
-## UC-03 — Grading phrasings (W2)
+## UC-03 — Chấm bài
 
-- Teacher free-text note → **Soạn cách nói** → 3 mock phrasings (gần gũi / rõ ràng / động viên).
-- Empty note → soft “tiếp nhận bài, chưa nhận xét chuyên môn” card.
-- Facts come only from the note (no invented technique). Phrases authored Thầy/Em then pronoun-rewritten.
+- Nhận xét thô của giáo viên → **Soạn cách nói** → backend tạo ba cách diễn đạt.
+- Không cho gửi nhận xét rỗng; lỗi API giữ nguyên nội dung giáo viên đã nhập.
+- Nội dung chỉ dùng sự thật trong nhận xét và hội thoại, không tự bịa kỹ thuật hay tiến độ.
 - **Copy** / **Dùng câu này** feed `activeDraft` for Footer **Đổ vào ô soạn**. Score UI removed.
+
+## Production
+
+- URL backend được đóng vào widget bằng `VITE_API_BASE_URL`; widget không cho nhập provider, API key hoặc model.
+- Toàn bộ provider, API key và model được quản lý tại `backend/.env`.
+- Backend phải cho phép ID extension qua `CORS_EXTENSION_IDS` và giữ `ALLOW_DEMO_MODE=0`.
 
 ## Bridge (for Dev 2)
 

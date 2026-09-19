@@ -79,6 +79,7 @@
     const url = href || (typeof location !== 'undefined' ? location.href : '');
     let conversationId = null;
     let pageId = null;
+    let studentId = null;
 
     try {
       const u = new URL(url);
@@ -89,8 +90,8 @@
         q.get('cid') ||
         q.get('thread_id') ||
         q.get('selected_id') ||
-        q.get('customer_id') ||
         null;
+      studentId = q.get('customer_id') || q.get('customerId') || q.get('sender_id') || null;
       pageId = q.get('page_id') || q.get('pageId') || q.get('pid') || null;
 
       const pathBlob = u.pathname + ' ' + (u.hash || '');
@@ -129,7 +130,7 @@
         firstMatch(/page[_-]?id=([A-Za-z0-9_.\-]+)/i, url);
     }
 
-    return { conversationId, pageId, url };
+    return { conversationId, pageId, studentId, url };
   }
 
   function extractFromSessionHook() {
@@ -194,6 +195,9 @@
       'data-thread-id',
       'data-page-id',
       'data-page_id',
+      'data-customer-id',
+      'data-customer_id',
+      'data-sender-id',
       'data-customer-name',
       'data-contact-name',
       'data-name',
@@ -218,6 +222,7 @@
 
     let conversationId = null;
     let pageId = null;
+    let studentId = null;
     let studentName = null;
 
     function readAttrs(el) {
@@ -227,6 +232,7 @@
         if (!v) continue;
         if (/conversation|cid|thread/i.test(name) && !conversationId) conversationId = v;
         if (/page/i.test(name) && !pageId) pageId = v;
+        if (/(customer|sender).*-?id/i.test(name) && !studentId) studentId = v.trim();
         if (/name/i.test(name) && !studentName) studentName = v.trim();
       }
       // dataset camelCase fallbacks
@@ -241,6 +247,9 @@
         }
         if (!pageId) {
           pageId = el.dataset.pageId || el.dataset.page_id || null;
+        }
+        if (!studentId) {
+          studentId = el.dataset.customerId || el.dataset.customer_id || el.dataset.senderId || null;
         }
         if (!studentName) {
           studentName =
@@ -259,10 +268,10 @@
         readAttrs(p);
         p = p.parentElement;
       }
-      if (conversationId && pageId && studentName) break;
+      if (conversationId && pageId && studentId && studentName) break;
     }
 
-    return { conversationId, pageId, studentName };
+    return { conversationId, pageId, studentId, studentName };
   }
 
   /**
@@ -335,10 +344,12 @@
       if (livePageId) pageId = livePageId;
     }
 
+    const studentId = fromDom.studentId || fromUrl.studentId || null;
     const studentName = fromDom.studentName || nameGuess || null;
 
     return {
       conversationId,
+      studentId,
       studentName,
       pageId,
       url: fromUrl.url || (typeof location !== 'undefined' ? location.href : ''),
@@ -371,7 +382,7 @@
   }
 
   function contextKey(ctx) {
-    return [ctx.conversationId || '', ctx.pageId || '', ctx.studentName || '', ctx.url || ''].join('|');
+    return [ctx.conversationId || '', ctx.pageId || '', ctx.studentId || '', ctx.studentName || '', ctx.url || ''].join('|');
   }
 
   /**

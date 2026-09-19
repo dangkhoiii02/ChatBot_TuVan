@@ -1,5 +1,13 @@
 import { AiProviderFields } from '../../shared/AiProviderFields';
-import { migrateAISettings, readAISettings } from '../../shared/ai-settings';
+import {
+  clearAIOverride,
+  clearSessionAIKey,
+  migrateAISettings,
+  readAISettings,
+  saveAISettings,
+  validateAISettings,
+  type AISettingsMode
+} from '../../shared/ai-settings';
 migrateAISettings();
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
@@ -13,22 +21,30 @@ import {
   CustomField,
   PancakePage,
   PronounPair,
-  AssignmentReviewOption,
-  MemoryItem
+  AssignmentReviewOption
 } from './types';
 import { ConversationSidebar } from './components/ConversationSidebar';
 import { ChatThread } from './components/ChatThread';
 import { SuggestionPanel } from './components/SuggestionPanel';
 import { PageSelector } from './components/PageSelector';
-import { mockConversations, demoPages } from './mock/conversations';
 import {
   createSuggestions,
+  createTeacherReview,
+  createStudentCustomField,
+  createStudentMemory,
+  deleteStudentCustomField,
+  deleteStudentMemory,
   getConversationMessages,
   getConversations,
   getHealth,
   getPages,
-  saveDemoReply,
-  logoutAppSession
+  getStudentContext,
+  saveStudentProfile,
+  logoutAppSession,
+  updateStudentCustomField,
+  updateStudentMemory,
+  validateAIConnection,
+  ApiError
 } from './services/api';
 import { getStaffUserId, setStaffUserId } from './lib/userId';
 import { adaptPronouns, cleanCorruptions } from './lib/pronounAdapter';
@@ -37,11 +53,9 @@ import { LoginGate } from './components/LoginGate';
 
 const CONVERSATION_LIMIT = 30;
 const MESSAGE_LIMIT = 30;
-
 export const App: React.FC = () => {
-  // Initialize with rich mock conversations for immediate usability
-  const [conversations, setConversations] = useState<Conversation[]>(mockConversations);
-  const [selectedId, setSelectedId] = useState<string>('conv-1');
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedId, setSelectedId] = useState<string>('');
   const [draftMessage, setDraftMessage] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [copySuccess, setCopySuccess] = useState<boolean>(false);
@@ -51,49 +65,107 @@ export const App: React.FC = () => {
   const [isLoadingPages, setIsLoadingPages] = useState<boolean>(false);
   const [isLoadingConversations, setIsLoadingConversations] = useState<boolean>(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState<boolean>(false);
-  const [isSendingDemo, setIsSendingDemo] = useState<boolean>(false);
+  const [isLoadingContext, setIsLoadingContext] = useState<boolean>(false);
+  const [isSavingContext, setIsSavingContext] = useState<boolean>(false);
+  const [contextReloadKey, setContextReloadKey] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [staffUserIdInput, setStaffUserIdInput] = useState<string>(() => getStaffUserId());
   const [hasSession, setHasSession] = useState<boolean>(() => Boolean(getSessionToken()));
   const allowDevUserHeader =
     import.meta.env.VITE_ALLOW_DEV_USER_HEADER === '1' ||
     import.meta.env.VITE_ALLOW_DEV_USER_HEADER === 'true';
-  const [isMockMode, setIsMockMode] = useState<boolean>(true);
   const hasLoadedPagesRef = useRef(false);
+  const suggestionRequestRef = useRef(0);
+  const conversationRequestRef = useRef(0);
+  const draftsByConversationRef = useRef(new Map<string, string>());
 
   // AI API Key & Model configuration
   const [showAiSettings, setShowAiSettings] = useState<boolean>(false);
-  const [aiApiKey, setAiApiKey] = useState<string>(() => localStorage.getItem('ai_api_key') || '');
-  const [aiProvider, setAiProvider] = useState(() => localStorage.getItem('ai_provider') || 'auto');
-  const [aiBaseUrl, setAiBaseUrl] = useState(() => localStorage.getItem('ai_base_url') || '');
-  const [aiModel, setAiModel] = useState<string>(() => localStorage.getItem('ai_model') || '');
+  const [aiMode, setAiMode] = useState<AISettingsMode>(() => readAISettings().mode);
+  const [aiApiKey, setAiApiKey] = useState<string>(() => readAISettings().apiKey || '');
+  const [aiProvider, setAiProvider] = useState(() => readAISettings().provider);
+  const [aiBaseUrl, setAiBaseUrl] = useState(() => readAISettings().baseUrl || '');
+  const [aiModel, setAiModel] = useState<string>(() => readAISettings().model || '');
+  const [rememberAiKey, setRememberAiKey] = useState<boolean>(() => readAISettings().rememberKey);
   const [showKeySecret, setShowKeySecret] = useState<boolean>(false);
+  const [aiSettingsErrors, setAiSettingsErrors] = useState<string[]>([]);
+  const [aiConnectionStatus, setAiConnectionStatus] = useState<string>('');
+  const [isTestingAi, setIsTestingAi] = useState(false);
 
   const handleCloseAiSettings = useCallback(() => {
     const saved = readAISettings();
+    setAiMode(saved.mode);
     setAiApiKey(saved.apiKey || '');
     setAiModel(saved.model || '');
     setAiProvider(saved.provider);
     setAiBaseUrl(saved.baseUrl || '');
+    setRememberAiKey(saved.rememberKey);
+    setAiSettingsErrors([]);
+    setAiConnectionStatus('');
     setShowAiSettings(false);
   }, []);
 
   const handleSaveAiSettings = useCallback(() => {
-    const trimmed = aiApiKey.trim();
-    if (trimmed) {
-      localStorage.setItem('ai_api_key', trimmed);
-    } else {
-      localStorage.removeItem('ai_api_key');
+    const next = {
+      mode: aiMode,
+      provider: aiProvider,
+      apiKey: aiApiKey.trim() || undefined,
+      model: aiModel.trim() || undefined,
+      baseUrl: aiBaseUrl.trim() || undefined,
+      rememberKey: rememberAiKey
+    };
+    const errors = validateAISettings(next);
+    if (errors.length) {
+      setAiSettingsErrors(errors);
+      return;
     }
-    localStorage.setItem('ai_model', aiModel);
-    localStorage.setItem('ai_provider', aiProvider);
-    localStorage.setItem('ai_base_url', aiBaseUrl);
+    saveAISettings(next);
+    setAiSettingsErrors([]);
     setShowAiSettings(false);
-  }, [aiApiKey, aiModel, aiProvider, aiBaseUrl]);
+  }, [aiApiKey, aiBaseUrl, aiMode, aiModel, aiProvider, rememberAiKey]);
 
   const handleClearApiKey = useCallback(() => {
     setAiApiKey('');
   }, []);
+
+  const handleUseSystemAi = useCallback(() => {
+    clearAIOverride();
+    setAiMode('system');
+    setAiApiKey('');
+    setAiModel('');
+    setAiProvider('auto');
+    setAiBaseUrl('');
+    setRememberAiKey(false);
+    setAiSettingsErrors([]);
+    setAiConnectionStatus('Đã chuyển về cấu hình AI của hệ thống.');
+  }, []);
+
+  const handleTestAiConnection = useCallback(async () => {
+    const settings = {
+      mode: aiMode,
+      provider: aiProvider,
+      apiKey: aiApiKey.trim() || undefined,
+      model: aiModel.trim() || undefined,
+      baseUrl: aiBaseUrl.trim() || undefined,
+      rememberKey: rememberAiKey
+    };
+    const errors = validateAISettings(settings);
+    if (errors.length) {
+      setAiSettingsErrors(errors);
+      return;
+    }
+    setIsTestingAi(true);
+    setAiConnectionStatus('');
+    setAiSettingsErrors([]);
+    try {
+      const result = await validateAIConnection(settings);
+      setAiConnectionStatus(`Kết nối thành công: ${result.provider} / ${result.model}`);
+    } catch (error) {
+      setAiSettingsErrors([getErrorMessage(error)]);
+    } finally {
+      setIsTestingAi(false);
+    }
+  }, [aiApiKey, aiBaseUrl, aiMode, aiModel, aiProvider, rememberAiKey]);
 
   // New states for Assistant features
   const [currentPronouns, setCurrentPronouns] = useState<PronounPair>({
@@ -117,6 +189,20 @@ export const App: React.FC = () => {
     [conversations, selectedId]
   );
 
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      clearSessionAIKey();
+      setHasSession(false);
+      setErrorMessage('Phiên đăng nhập đã hết hạn. Bản nháp hiện tại vẫn được giữ; vui lòng đăng nhập lại.');
+    };
+    window.addEventListener('ttd:session-expired', handleSessionExpired);
+    return () => window.removeEventListener('ttd:session-expired', handleSessionExpired);
+  }, []);
+
+  useEffect(() => {
+    if (selectedId) draftsByConversationRef.current.set(selectedId, draftMessage);
+  }, [draftMessage, selectedId]);
+
   // Synchronize pronouns when switching conversation
   useEffect(() => {
     if (!selectedConversation) return;
@@ -135,7 +221,31 @@ export const App: React.FC = () => {
     } else {
       setCurrentPronouns({ recipientCall: 'Em', senderCall: 'Thầy', label: 'Thầy — Em' });
     }
-  }, [selectedConversation?.id]);
+  }, [
+    selectedConversation?.id,
+    selectedConversation?.profile?.recipientCall,
+    selectedConversation?.profile?.senderCall,
+    selectedConversation?.studentName
+  ]);
+
+  const applyStudentContext = useCallback((context: Awaited<ReturnType<typeof getStudentContext>>) => {
+    setConversations((current) =>
+      current.map((conversation) =>
+        conversation.pageId === context.pageId &&
+        (conversation.studentId === context.studentId ||
+          (!conversation.studentId && conversation.id === context.studentId))
+          ? {
+              ...conversation,
+              studentId: context.studentId,
+              profile: context.profile,
+              memories: context.memories,
+              contextRevision: context.revision,
+              contextUpdatedAt: context.updatedAt
+            }
+          : conversation
+      )
+    );
+  }, []);
 
   const pageNameById = useMemo(
     () => new Map(pages.map((page) => [page.id, page.name])),
@@ -144,20 +254,12 @@ export const App: React.FC = () => {
 
   const refreshConversations = useCallback(async () => {
     if (!selectedPageIds.length) return;
+    const requestNumber = ++conversationRequestRef.current;
 
     setIsLoadingConversations(true);
     setErrorMessage('');
 
     try {
-      if (isMockMode) {
-        setConversations(mockConversations);
-        setSelectedId((currentId) => {
-          if (currentId && mockConversations.some((item) => item.id === currentId)) return currentId;
-          return mockConversations[0]?.id || '';
-        });
-        return;
-      }
-
       if (!selectedPageIds.length) {
         setConversations([]);
         setSelectedId('');
@@ -165,6 +267,7 @@ export const App: React.FC = () => {
       }
 
       const items = await getConversations(selectedPageIds, CONVERSATION_LIMIT);
+      if (requestNumber !== conversationRequestRef.current) return;
       if (items && items.length > 0) {
         const mapped = items.map((item) => mapConversationSummary(item, pageNameById));
 
@@ -195,61 +298,36 @@ export const App: React.FC = () => {
         });
       }
     } catch (error) {
+      if (requestNumber !== conversationRequestRef.current || isAbortError(error)) return;
       setErrorMessage(getErrorMessage(error));
-      // Tự động chuyển sang Chế độ Mock Test khi gọi API thất bại
-      setIsMockMode(true);
-      setPages(demoPages);
-      setSelectedPageIds(['demo-page']);
-      setConversations(mockConversations);
-      setSelectedId(mockConversations[0]?.id || '');
-      // Keep mock conversations on API error so UI remains fully functional
-      console.warn('Backend conversations unavailable, using mock data:', error);
     } finally {
       setIsLoadingConversations(false);
     }
-  }, [isMockMode, pageNameById, selectedPageIds]);
-
-  const toggleMockMode = useCallback(() => {
-    setIsMockMode((prev) => {
-      const next = !prev;
-      if (next) {
-        setPages(demoPages);
-        setSelectedPageIds(['demo-page']);
-        setConversations(mockConversations);
-        setSelectedId(mockConversations[0]?.id || '');
-      } else {
-        refreshConversations();
-      }
-      return next;
-    });
-  }, [refreshConversations]);
+  }, [pageNameById, selectedPageIds]);
 
   useEffect(() => {
-    getHealth()
+    const controller = new AbortController();
+    getHealth(controller.signal)
       .then(setHealth)
       .catch((error) => {
+        if (isAbortError(error)) return;
         setErrorMessage(getErrorMessage(error));
-        // Fallback health state for offline/demo
-        setHealth({
-          ok: true,
-          service: 'frontend-demo',
-          pancakeConfigured: false,
-          pancakeAuthMode: 'missing',
-          aiProvider: 'Mock Assistant Thầy Minh'
-        });
+        setHealth(null);
       });
+    return () => controller.abort();
   }, []);
 
   useEffect(() => {
-    if (hasLoadedPagesRef.current || isMockMode) return;
+    if (hasLoadedPagesRef.current) return;
     hasLoadedPagesRef.current = true;
 
     let isCurrent = true;
+    const controller = new AbortController();
 
     setIsLoadingPages(true);
     setErrorMessage('');
 
-    getPages()
+    getPages(controller.signal)
       .then((data) => {
         if (!isCurrent) return;
 
@@ -263,15 +341,8 @@ export const App: React.FC = () => {
         );
       })
       .catch((error) => {
-        // Provide demo page if backend is offline
-        if (isCurrent) {
+        if (isCurrent && !isAbortError(error)) {
           setErrorMessage(getErrorMessage(error));
-          // Auto fallback sang demoPages và mockConversations khi getPages lỗi
-          setIsMockMode(true);
-          setPages(demoPages);
-          setSelectedPageIds(['demo-page']);
-          setConversations(mockConversations);
-          setSelectedId(mockConversations[0]?.id || '');
         }
       })
       .finally(() => {
@@ -280,21 +351,23 @@ export const App: React.FC = () => {
 
     return () => {
       isCurrent = false;
+      controller.abort();
     };
-  }, [isMockMode]);
+  }, []);
 
   useEffect(() => {
     refreshConversations();
   }, [refreshConversations]);
 
   useEffect(() => {
-    if (!selectedId || !selectedConversation?.pageId || isMockMode || selectedConversation.pageId === 'demo-page') return;
+    if (!selectedId || !selectedConversation?.pageId) return;
 
     let isCurrent = true;
+    const controller = new AbortController();
     setIsLoadingMessages(true);
     setErrorMessage('');
 
-    getConversationMessages(selectedId, selectedConversation.pageId, MESSAGE_LIMIT)
+    getConversationMessages(selectedId, selectedConversation.pageId, MESSAGE_LIMIT, controller.signal)
       .then((items) => {
         if (!isCurrent) return;
         const messages = items
@@ -315,7 +388,7 @@ export const App: React.FC = () => {
         );
       })
       .catch((error) => {
-        if (isCurrent) setErrorMessage(getErrorMessage(error));
+        if (isCurrent && !isAbortError(error)) setErrorMessage(getErrorMessage(error));
       })
       .finally(() => {
         if (isCurrent) setIsLoadingMessages(false);
@@ -323,10 +396,45 @@ export const App: React.FC = () => {
 
     return () => {
       isCurrent = false;
+      controller.abort();
     };
   }, [selectedConversation?.pageId, selectedId]);
 
+  useEffect(() => {
+    if (!selectedConversation) return;
+    const controller = new AbortController();
+    const studentId = selectedConversation.studentId || selectedConversation.id;
+    setIsLoadingContext(true);
+    getStudentContext({
+      pageId: selectedConversation.pageId,
+      studentId,
+      studentName: selectedConversation.studentName,
+      signal: controller.signal
+    })
+      .then(applyStudentContext)
+      .catch((error) => {
+        if (!isAbortError(error)) setErrorMessage(getErrorMessage(error));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoadingContext(false);
+      });
+    return () => controller.abort();
+  }, [
+    applyStudentContext,
+    contextReloadKey,
+    selectedConversation?.id,
+    selectedConversation?.pageId
+  ]);
+
+  const handleContextMutationError = useCallback((error: unknown) => {
+    setErrorMessage(getErrorMessage(error));
+    if (error instanceof ApiError && error.code === 'REVISION_CONFLICT') {
+      setContextReloadKey((value) => value + 1);
+    }
+  }, []);
+
   const handlePageSelectionChange = useCallback((pageIds: string[]) => {
+    draftsByConversationRef.current.clear();
     setSelectedPageIds(pageIds);
     setSelectedId('');
     setConversations([]);
@@ -335,71 +443,17 @@ export const App: React.FC = () => {
   }, []);
 
   const handleSelectConversation = useCallback((id: string) => {
+    suggestionRequestRef.current += 1;
+    setIsGenerating(false);
     setSelectedId(id);
     setCopySuccess(false);
-    setDraftMessage('');
+    setDraftMessage(draftsByConversationRef.current.get(id) || '');
     setMobileView('chat');
 
     setConversations((prev) =>
       prev.map((c) => (c.id === id && c.unreadCount > 0 ? { ...c, unreadCount: 0 } : c))
     );
   }, []);
-
-  const handleSendDemo = useCallback(async () => {
-    if (!draftMessage.trim() || !selectedConversation || isSendingDemo) return;
-
-    setIsSendingDemo(true);
-    setErrorMessage('');
-
-    try {
-      let newMsg: ChatMessage;
-
-      if (selectedConversation.pageId === 'demo-page' || !health?.pancakeConfigured) {
-        // Local demo mode: generate instant local reply
-        newMsg = {
-          id: `msg-demo-${Date.now()}`,
-          sender: 'staff',
-          text: draftMessage.trim(),
-          sentAt: `${formatTimestamp(new Date().toISOString())} (Demo)`,
-          createdAt: new Date().toISOString()
-        };
-      } else {
-        const savedReply = await saveDemoReply({
-          conversationId: selectedConversation.id,
-          content: draftMessage.trim()
-        });
-
-        newMsg = {
-          id: savedReply.id,
-          sender: 'staff',
-          text: savedReply.content,
-          sentAt: `${formatTimestamp(savedReply.createdAt)} (Demo)`,
-          createdAt: savedReply.createdAt
-        };
-      }
-
-      setConversations((prev) =>
-        prev.map((conv) => {
-          if (conv.id === selectedConversation.id) {
-            return {
-              ...conv,
-              messages: [...conv.messages, newMsg],
-              lastMessage: newMsg.text,
-              lastActiveAt: 'Vừa xong'
-            };
-          }
-          return conv;
-        })
-      );
-
-      setDraftMessage('');
-      setCopySuccess(false);
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error));
-    } finally {
-      setIsSendingDemo(false);
-    }
-  }, [draftMessage, health?.pancakeConfigured, isSendingDemo, selectedConversation]);
 
   const handleCopyDraft = useCallback(() => {
     if (!draftMessage.trim()) return;
@@ -460,6 +514,25 @@ export const App: React.FC = () => {
 
     if (!selectedConversation) return;
 
+    const updatedProfile = selectedConversation.profile
+      ? {
+          ...selectedConversation.profile,
+          recipientCall: newPair.recipientCall,
+          senderCall: newPair.senderCall,
+          fields: selectedConversation.profile.fields.map((field) => {
+            if (field.key === 'sender') return { ...field, value: newPair.senderCall, source: 'user_input' as const };
+            if (field.key === 'recipient') {
+              return {
+                ...field,
+                value: `${newPair.recipientCall} ${selectedConversation.studentName.replace(/^(Em|Chị|Anh|Bạn)\s*/i, '')}`,
+                source: 'user_input' as const
+              };
+            }
+            return field;
+          })
+        }
+      : undefined;
+
     setConversations((prev) =>
       prev.map((c) => {
         if (c.id === selectedConversation.id) {
@@ -471,19 +544,6 @@ export const App: React.FC = () => {
             ...o,
             content: adaptPronouns(o.content, oldPair, newPair)
           }));
-          const updatedProfile = c.profile
-            ? {
-                ...c.profile,
-                recipientCall: newPair.recipientCall,
-                senderCall: newPair.senderCall,
-                fields: c.profile.fields.map((f) => {
-                  if (f.key === 'sender') return { ...f, value: newPair.senderCall };
-                  if (f.key === 'recipient') return { ...f, value: `${newPair.recipientCall} ${c.studentName.replace(/^(Em|Chị|Anh|Bạn)\s*/i, '')}` };
-                  return f;
-                })
-              }
-            : undefined;
-
           return {
             ...c,
             suggestions: updatedSuggestions,
@@ -500,213 +560,257 @@ export const App: React.FC = () => {
       if (!prevDraft.trim()) return prevDraft;
       return adaptPronouns(prevDraft, oldPair, newPair);
     });
-  }, [currentPronouns, selectedConversation]);
 
-  // Fast Pedagogical Assignment Review Generator
-  const handleGradeAssignment = useCallback((reviewText: string) => {
-    if (!selectedConversation) return;
-    const s = currentPronouns.senderCall;
-    const r = currentPronouns.recipientCall;
-
-    const generatedOptions: AssignmentReviewOption[] = [
-      {
-        id: `asg_${Date.now()}_1`,
-        tone: 'Sư phạm & Kỹ thuật',
-        content: `${s} xem clip và nhận thấy nè ${r}! ${reviewText}. ${r} tập trung thả lỏng cổ tay và tập chậm lại từng ô nhịp nhé!`,
-        usedFacts: ['Lỗi kỹ thuật', 'Thả lỏng cổ tay', 'Tập chậm']
-      },
-      {
-        id: `asg_${Date.now()}_2`,
-        tone: 'Nhẹ nhàng & Khích lệ',
-        content: `Tiếng đàn tuần này của ${r} tiến bộ hơn rồi nè! Chỉ cần lưu ý thêm: ${reviewText}. Cố lên nghen ${r} ơi, sắp thành thạo bài rồi nè 🥰`,
-        usedFacts: ['Tiếng đàn tiến bộ', 'Khích lệ tập luyện']
-      },
-      {
-        id: `asg_${Date.now()}_3`,
-        tone: 'Ngắn gọn & Trọng tâm',
-        content: `${r} tập trung chỉnh sửa: ${reviewText}. Giữ tempo 50 và lặp lại 5-7 lượt mỗi ngày nha.`,
-        usedFacts: ['Trọng tâm chỉnh sửa', 'Tempo 50']
-      }
-    ];
-
-    setConversations((prev) =>
-      prev.map((c) =>
-        c.id === selectedConversation.id
-          ? {
-              ...c,
-              assignmentOptions: generatedOptions
-            }
-          : c
-      )
-    );
-  }, [currentPronouns, selectedConversation]);
-
-  // Add Custom Field to Student Profile
-  const handleAddCustomField = useCallback((field: Omit<CustomField, 'id' | 'source'>) => {
-    if (!selectedConversation) return;
-    const newField: CustomField = {
-      ...field,
-      id: `cf_${Date.now()}`,
-      source: 'user_input'
-    };
-
-    setConversations((prev) =>
-      prev.map((c) => {
-        if (c.id === selectedConversation.id) {
-          const currentProfile = c.profile || {
-            recipientCall: currentPronouns.recipientCall,
-            senderCall: currentPronouns.senderCall,
-            nextAction: 'Chờ phản hồi từ học viên',
-            specialNotes: '',
-            studyNotes: '',
-            dataStatus: 'saved',
-            fields: [],
-            customFields: []
-          };
-          return {
-            ...c,
-            profile: {
-              ...currentProfile,
-              customFields: [...(currentProfile.customFields || []), newField]
-            }
-          };
-        }
-        return c;
+    if (updatedProfile) {
+      setIsSavingContext(true);
+      void saveStudentProfile({
+        pageId: selectedConversation.pageId,
+        studentId: selectedConversation.studentId || selectedConversation.id,
+        studentName: selectedConversation.studentName,
+        revision: selectedConversation.contextRevision || 0,
+        profile: updatedProfile
       })
-    );
-  }, [currentPronouns, selectedConversation]);
+        .then(applyStudentContext)
+        .catch(handleContextMutationError)
+        .finally(() => setIsSavingContext(false));
+    }
+  }, [
+    applyStudentContext,
+    currentPronouns,
+    handleContextMutationError,
+    selectedConversation
+  ]);
+
+  // Fast Pedagogical Assignment Review Generator connected to Backend API
+  const handleGradeAssignment = useCallback(
+    async (reviewText: string) => {
+      if (!selectedConversation) return;
+      const trimmed = reviewText.trim();
+      if (!trimmed) return;
+
+      try {
+        const response = await createTeacherReview({
+          conversationId: selectedConversation.id,
+          teacherInput: trimmed,
+          pronouns: currentPronouns,
+          messages: selectedConversation.messages || []
+        });
+
+        const options: AssignmentReviewOption[] = response.suggestions.map((sug, index) => ({
+          id: sug.id || `asg_${Date.now()}_${index}`,
+          tone: sug.tone,
+          content: sug.content,
+          usedFacts: sug.usedFacts || [trimmed]
+        }));
+
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === selectedConversation.id
+              ? {
+                  ...c,
+                  assignmentOptions: options
+                }
+              : c
+          )
+        );
+      } catch (error) {
+        setErrorMessage(getErrorMessage(error));
+        throw error;
+      }
+    },
+    [selectedConversation, currentPronouns]
+  );
+
+  const handleAddCustomField = useCallback(async (field: Omit<CustomField, 'id' | 'source'>) => {
+    if (!selectedConversation) return;
+    setIsSavingContext(true);
+    setErrorMessage('');
+    try {
+      const context = await createStudentCustomField({
+        pageId: selectedConversation.pageId,
+        studentId: selectedConversation.studentId || selectedConversation.id,
+        studentName: selectedConversation.studentName,
+        revision: selectedConversation.contextRevision || 0,
+        field
+      });
+      applyStudentContext(context);
+    } catch (error) {
+      handleContextMutationError(error);
+      throw error;
+    } finally {
+      setIsSavingContext(false);
+    }
+  }, [applyStudentContext, handleContextMutationError, selectedConversation]);
 
   // Accept AI Suggested Field in Profile
-  const handleAcceptAiProfileSuggestion = useCallback((fieldKey: string, newValue: string) => {
-    if (!selectedConversation) return;
-
-    setConversations((prev) =>
-      prev.map((c) => {
-        if (c.id === selectedConversation.id && c.profile) {
-          const updatedFields = c.profile.fields.map((f) =>
-            f.key === fieldKey
-              ? { ...f, value: newValue, source: 'confirmed' as const, aiSuggestion: undefined, conflictReason: undefined }
-              : f
-          );
-          const hasConflict = updatedFields.some((f) => f.source === 'conflict');
-          return {
-            ...c,
-            profile: {
-              ...c.profile,
-              fields: updatedFields,
-              dataStatus: hasConflict ? ('conflict' as const) : ('saved' as const)
-            }
-          };
-        }
-        return c;
-      })
+  const handleAcceptAiProfileSuggestion = useCallback(async (fieldKey: string, newValue: string) => {
+    if (!selectedConversation?.profile) return;
+    const fields = selectedConversation.profile.fields.map((field) =>
+      field.key === fieldKey
+        ? {
+            ...field,
+            value: newValue,
+            source: 'confirmed' as const,
+            aiSuggestion: undefined,
+            conflictReason: undefined
+          }
+        : field
     );
-  }, [selectedConversation]);
+    const profile = {
+      ...selectedConversation.profile,
+      fields,
+      dataStatus: fields.some((field) => field.source === 'conflict')
+        ? ('conflict' as const)
+        : ('saved' as const)
+    };
+    setIsSavingContext(true);
+    try {
+      const context = await saveStudentProfile({
+        pageId: selectedConversation.pageId,
+        studentId: selectedConversation.studentId || selectedConversation.id,
+        studentName: selectedConversation.studentName,
+        revision: selectedConversation.contextRevision || 0,
+        profile
+      });
+      applyStudentContext(context);
+    } catch (error) {
+      handleContextMutationError(error);
+    } finally {
+      setIsSavingContext(false);
+    }
+  }, [applyStudentContext, handleContextMutationError, selectedConversation]);
 
   // Save new memory item or apply suggested memory
-  const handleSaveMemory = useCallback((content: string, reason?: string) => {
+  const handleSaveMemory = useCallback(async (content: string, reason?: string) => {
     if (!selectedConversation) return;
+    setIsSavingContext(true);
+    try {
+      const context = await createStudentMemory({
+        pageId: selectedConversation.pageId,
+        studentId: selectedConversation.studentId || selectedConversation.id,
+        studentName: selectedConversation.studentName,
+        revision: selectedConversation.contextRevision || 0,
+        content,
+        reason
+      });
+      applyStudentContext(context);
+    } catch (error) {
+      handleContextMutationError(error);
+      throw error;
+    } finally {
+      setIsSavingContext(false);
+    }
+  }, [applyStudentContext, handleContextMutationError, selectedConversation]);
 
-    const newMem: MemoryItem = {
-      id: `mem_${Date.now()}`,
-      content,
-      status: 'active',
-      reason,
-      createdAt: 'Vừa xong'
-    };
+  const handleMemoryAction = useCallback(async (
+    memoryId: string,
+    action: 'activate' | 'archive' | 'restore'
+  ) => {
+    if (!selectedConversation) return;
+    setIsSavingContext(true);
+    try {
+      const context = await updateStudentMemory({
+        pageId: selectedConversation.pageId,
+        studentId: selectedConversation.studentId || selectedConversation.id,
+        studentName: selectedConversation.studentName,
+        revision: selectedConversation.contextRevision || 0,
+        memoryId,
+        action
+      });
+      applyStudentContext(context);
+    } catch (error) {
+      handleContextMutationError(error);
+    } finally {
+      setIsSavingContext(false);
+    }
+  }, [applyStudentContext, handleContextMutationError, selectedConversation]);
 
-    setConversations((prev) =>
-      prev.map((c) => {
-        if (c.id === selectedConversation.id) {
-          const existing = (c.memories || []).filter((m) => m.content !== content);
-          return {
-            ...c,
-            memories: [newMem, ...existing]
-          };
-        }
-        return c;
-      })
-    );
-  }, [selectedConversation]);
+  const handleDeleteMemory = useCallback(async (memoryId: string) => {
+    if (!selectedConversation) return;
+    if (!window.confirm('Xóa hẳn ghi nhớ này? Thao tác này không thể hoàn tác.')) return;
+    setIsSavingContext(true);
+    try {
+      const context = await deleteStudentMemory({
+        pageId: selectedConversation.pageId,
+        studentId: selectedConversation.studentId || selectedConversation.id,
+        studentName: selectedConversation.studentName,
+        revision: selectedConversation.contextRevision || 0,
+        memoryId
+      });
+      applyStudentContext(context);
+    } catch (error) {
+      handleContextMutationError(error);
+    } finally {
+      setIsSavingContext(false);
+    }
+  }, [applyStudentContext, handleContextMutationError, selectedConversation]);
+
+  const handleUpdateCustomField = useCallback(async (
+    fieldId: string,
+    changes: { value?: string; useInSuggestions?: boolean; hidden?: boolean }
+  ) => {
+    if (!selectedConversation) return;
+    setIsSavingContext(true);
+    try {
+      const context = await updateStudentCustomField({
+        pageId: selectedConversation.pageId,
+        studentId: selectedConversation.studentId || selectedConversation.id,
+        studentName: selectedConversation.studentName,
+        revision: selectedConversation.contextRevision || 0,
+        fieldId,
+        ...changes
+      });
+      applyStudentContext(context);
+    } catch (error) {
+      handleContextMutationError(error);
+    } finally {
+      setIsSavingContext(false);
+    }
+  }, [applyStudentContext, handleContextMutationError, selectedConversation]);
+
+  const handleDeleteCustomField = useCallback(async (fieldId: string) => {
+    if (!selectedConversation) return;
+    if (!window.confirm('Xóa định nghĩa field và giá trị của học viên này?')) return;
+    setIsSavingContext(true);
+    try {
+      const context = await deleteStudentCustomField({
+        pageId: selectedConversation.pageId,
+        studentId: selectedConversation.studentId || selectedConversation.id,
+        studentName: selectedConversation.studentName,
+        revision: selectedConversation.contextRevision || 0,
+        fieldId
+      });
+      applyStudentContext(context);
+    } catch (error) {
+      handleContextMutationError(error);
+    } finally {
+      setIsSavingContext(false);
+    }
+  }, [applyStudentContext, handleContextMutationError, selectedConversation]);
 
   const handleGenerateSuggestions = useCallback(async () => {
     if (!selectedConversation || isGenerating) return;
+    const requestNumber = ++suggestionRequestRef.current;
+    const targetConversationId = selectedConversation.id;
 
     setIsGenerating(true);
     setErrorMessage('');
 
     try {
-      const savedAI = readAISettings();
-      const hasKey = Boolean(savedAI.apiKey || savedAI.model || (savedAI.provider !== 'auto' && savedAI.provider !== 'mock'));
-
-      // Nếu đang bật Mock mode thuần túy và KHÔNG có AI Key thì dùng dữ liệu mẫu cục bộ
-      if (isMockMode && !hasKey) {
-        const mockItem = mockConversations.find((c) => c.id === selectedConversation.id);
-        if (mockItem && mockItem.suggestions.length > 0) {
-          setConversations((current) =>
-            current.map((conversation) =>
-              conversation.id === selectedConversation.id
-                ? {
-                    ...conversation,
-                    intent: mockItem.intent,
-                    flagReason: mockItem.flagReason || conversation.flagReason,
-                    suggestions: mockItem.suggestions,
-                    aiProvider: 'mock',
-                    isDemoFallback: true
-                  }
-                : conversation
-            )
-          );
-          return;
-        }
-
-        // Quick local generator nếu không có mock item
-        await new Promise((res) => setTimeout(res, 400));
-        setConversations((current) =>
-          current.map((c) =>
-            c.id === selectedConversation.id
-              ? {
-                  ...c,
-                  suggestions: [
-                    {
-                      id: `sug_${Date.now()}_1`,
-                      tone: 'Nhẹ nhàng & Tình cảm',
-                      sensitivity: c.intent === 'sensitive' ? 'do' : 'xanh',
-                      content: `Dạ ${currentPronouns.senderCall} chào ${currentPronouns.recipientCall}! ${currentPronouns.senderCall} có xem qua tin nhắn rồi nè, ${currentPronouns.recipientCall} cứ yên tâm nha, bài học lớp mình luôn đồng hành cùng ${currentPronouns.recipientCall} ^^`,
-                      usedFacts: ['Đồng hành bài học', 'Thấu hiểu học viên']
-                    },
-                    {
-                      id: `sug_${Date.now()}_2`,
-                      tone: 'Rõ việc cần làm',
-                      sensitivity: c.intent === 'sensitive' ? 'do' : 'xanh',
-                      content: `${currentPronouns.recipientCall} ơi, việc quan trọng nhất là ${c.profile?.nextAction || 'chăm sóc sức khỏe và luyện ngón đều tay'}. ${currentPronouns.recipientCall} nhắn lại cho ${currentPronouns.senderCall} sớm nhé!`,
-                      usedFacts: ['Việc cần làm tiếp', 'Phản hồi sớm']
-                    },
-                    {
-                      id: `sug_${Date.now()}_3`,
-                      tone: 'Thân mật & Khích lệ',
-                      sensitivity: c.intent === 'sensitive' ? 'do' : 'xanh',
-                      content: `${currentPronouns.recipientCall} cố lên nghen! Dù bận hay khó khăn gì thì chỉ cần 10-15 phút rảnh là lướt ngón xả stress được rồi nè 🥰`,
-                      usedFacts: ['10-15 phút xả stress']
-                    }
-                  ]
-                }
-              : c
-          )
-        );
-        return;
-      }
-
       // Gọi Backend API (tích hợp AI Key & Model nếu người dùng đã nhập)
       const result = await createSuggestions({
         conversationId: selectedConversation.id,
+        studentId: selectedConversation.studentId || selectedConversation.id,
+        contextRevision: selectedConversation.contextRevision || 0,
+        pronouns: currentPronouns,
         messages: selectedConversation.messages,
-        ...savedAI
       });
+
+      if (requestNumber !== suggestionRequestRef.current) return;
 
       setConversations((current) =>
         current.map((conversation) =>
-          conversation.id === selectedConversation.id
+          conversation.id === targetConversationId
             ? {
                 ...conversation,
                 intent: result.intent,
@@ -727,31 +831,11 @@ export const App: React.FC = () => {
         )
       );
     } catch (error) {
-      setErrorMessage(getErrorMessage(error));
-      // Khi API gợi ý lỗi thì fallback sang gợi ý mock của học viên
-      const mockItem = mockConversations.find((c) => c.id === selectedConversation.id);
-      if (mockItem && mockItem.suggestions.length > 0) {
-        setConversations((current) =>
-          current.map((conversation) =>
-            conversation.id === selectedConversation.id
-              ? {
-                  ...conversation,
-                  intent: mockItem.intent,
-                  flagReason: mockItem.flagReason || conversation.flagReason,
-                  suggestions: mockItem.suggestions,
-                  aiProvider: 'mock (offline)',
-                  isDemoFallback: true
-                }
-              : conversation
-          )
-        );
-      } else {
-        setErrorMessage(getErrorMessage(error));
-      }
+      if (requestNumber === suggestionRequestRef.current) setErrorMessage(getErrorMessage(error));
     } finally {
-      setIsGenerating(false);
+      if (requestNumber === suggestionRequestRef.current) setIsGenerating(false);
     }
-  }, [currentPronouns, health?.pancakeConfigured, isMockMode, isGenerating, aiApiKey, aiModel, aiProvider, aiBaseUrl, selectedConversation]);
+  }, [currentPronouns, isGenerating, selectedConversation]);
 
 
   const applyStaffUserId = useCallback(() => {
@@ -762,6 +846,7 @@ export const App: React.FC = () => {
   const handleLogout = useCallback(() => {
     logoutAppSession();
     clearAppSession();
+    clearSessionAIKey();
     setHasSession(false);
     setErrorMessage('');
   }, []);
@@ -770,11 +855,16 @@ export const App: React.FC = () => {
   if (!hasSession) {
     return (
       <LoginGate
+        notice={errorMessage}
         onLoggedIn={() => {
-          setAiApiKey(localStorage.getItem('ai_api_key') || '');
-          setAiModel(localStorage.getItem('ai_model') || '');
-          setAiProvider(localStorage.getItem('ai_provider') || 'auto');
-          setAiBaseUrl(localStorage.getItem('ai_base_url') || '');
+          const settings = readAISettings();
+          setAiMode(settings.mode);
+          setAiApiKey(settings.apiKey || '');
+          setAiModel(settings.model || '');
+          setAiProvider(settings.provider);
+          setAiBaseUrl(settings.baseUrl || '');
+          setRememberAiKey(settings.rememberKey);
+          setErrorMessage('');
           setHasSession(true);
         }}
       />
@@ -799,29 +889,21 @@ export const App: React.FC = () => {
             isLoading={isLoadingPages}
             onChange={handlePageSelectionChange}
           />
-          <span className="badge-status-pill badge-active">
-            <span className="dot-green" /> API Demo
+          <span className={`badge-status-pill ${health?.ok ? 'badge-active' : 'badge-error'}`}>
+            <span className={health?.ok ? 'dot-green' : 'dot-amber'} />
+            {health?.ok ? 'Backend sẵn sàng' : 'Backend chưa kết nối'}
           </span>
-          <button
-            type="button"
-            className={`btn-mode-toggle ${isMockMode ? 'btn-mock-active' : ''}`}
-            onClick={toggleMockMode}
-            title={isMockMode ? 'Bấm để thử chuyển sang Live API' : 'Bấm để chuyển sang Chế độ Mock Test'}
-          >
-            <span className={`dot-status ${isMockMode ? 'dot-amber' : 'dot-green'}`} />
-            {isMockMode ? 'Chế độ: Mock Test (6 học viên)' : 'Chế độ: Live API'}
-          </button>
 
           {/* Nút Cấu hình AI Key & Model */}
           <button
             type="button"
-            className={`btn-mode-toggle btn-gemini-pill ${aiApiKey.trim() ? 'has-key' : ''}`}
+            className={`btn-mode-toggle btn-gemini-pill ${aiMode === 'user_override' ? 'has-key' : ''}`}
             onClick={() => setShowAiSettings(true)}
             title="Cấu hình AI API Key và chọn Model"
           >
-            <span className={`dot-status ${aiApiKey.trim() ? 'dot-green' : 'dot-amber'}`} />
+            <span className={`dot-status ${aiMode === 'user_override' ? 'dot-green' : 'dot-amber'}`} />
             <span className="gemini-pill-label">
-              {aiApiKey.trim() ? `⚡ AI: ${aiModel}` : '🔑 Nhập Key & Chọn Model'}
+              {aiMode === 'user_override' ? `AI riêng: ${aiModel || 'chưa đủ cấu hình'}` : 'AI hệ thống'}
             </span>
           </button>
           <span className="badge-status-pill">{conversations.length} hội thoại</span>
@@ -851,7 +933,14 @@ export const App: React.FC = () => {
             Đăng xuất
           </button>
 
-          {errorMessage && <span className="badge-status-pill badge-error">Lỗi: {errorMessage}</span>}
+          {errorMessage && (
+            <span className="badge-status-pill badge-error" role="alert">
+              Lỗi: {errorMessage}
+              <button type="button" className="error-dismiss" onClick={() => setErrorMessage('')} aria-label="Đóng thông báo lỗi">
+                Đóng
+              </button>
+            </span>
+          )}
         </div>
       </header>
 
@@ -875,11 +964,9 @@ export const App: React.FC = () => {
             conversation={selectedConversation}
             draftMessage={draftMessage}
             onDraftChange={setDraftMessage}
-            onSendDemo={handleSendDemo}
             onCopyDraft={handleCopyDraft}
             copySuccess={copySuccess}
             isLoadingMessages={isLoadingMessages}
-            isSendingDemo={isSendingDemo}
             conflictDialog={conflictDialog}
             onResolveConflict={handleResolveConflict}
             onOpenAssistantMobile={() => setMobileView('assistant')}
@@ -898,11 +985,18 @@ export const App: React.FC = () => {
             onChangePronouns={handleChangePronouns}
             onGradeAssignment={handleGradeAssignment}
             onAddCustomField={handleAddCustomField}
+            onUpdateCustomField={handleUpdateCustomField}
+            onDeleteCustomField={handleDeleteCustomField}
             onAcceptAiProfileSuggestion={handleAcceptAiProfileSuggestion}
             onSaveMemory={handleSaveMemory}
+            onDeleteMemory={handleDeleteMemory}
+            onMemoryAction={handleMemoryAction}
             onCloseMobile={() => setMobileView('chat')}
             aiApiKey={aiApiKey}
             aiModel={aiModel}
+            aiMode={aiMode}
+            isContextLoading={isLoadingContext}
+            isSavingContext={isSavingContext}
             onOpenAiSettings={() => setShowAiSettings(true)}
           />
         </div>
@@ -947,12 +1041,18 @@ export const App: React.FC = () => {
       {/* MODAL CẤU HÌNH GEMINI API KEY & MÔ HÌNH */}
       {showAiSettings && (
         <div className="modal-backdrop" onClick={handleCloseAiSettings}>
-          <div className="ai-settings-modal" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="ai-settings-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ai-settings-title"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-header">
               <div className="modal-title-group">
-                <h3>⚙️ Cấu hình AI & Mô hình</h3>
+                <h3 id="ai-settings-title">Cấu hình AI và mô hình</h3>
                 <p className="modal-subtitle">
-                  Nhập API Key để AI Thầy Minh tự động phân tích ngữ cảnh và sinh 3 phương án phản hồi trực tiếp theo thời gian thực.
+                  Dùng cấu hình hệ thống hoặc cấu hình riêng cho các request của bạn.
                 </p>
               </div>
               <button
@@ -961,57 +1061,79 @@ export const App: React.FC = () => {
                 onClick={handleCloseAiSettings}
                 title="Đóng"
               >
-                ✕
+                Đóng
               </button>
             </div>
 
             <div className="modal-body">
-              <AiProviderFields provider={aiProvider} baseUrl={aiBaseUrl} onProvider={v => { setAiProvider(v); }} onBaseUrl={v => { setAiBaseUrl(v); }} />
-<label className="settings-field">
-                <span className="field-label">AI API Key</span>
-                <div className="input-password-row">
-                  <input
-                    type={showKeySecret ? 'text' : 'password'}
-                    className="minimal-input font-mono"
-                    placeholder="Dán API key của nhà cung cấp..."
-                    value={aiApiKey}
-                    onChange={(e) => setAiApiKey(e.target.value)}
-                    autoFocus
-                  />
-                  <button
-                    type="button"
-                    className="btn-mini"
-                    onClick={() => setShowKeySecret((prev) => !prev)}
-                  >
-                    {showKeySecret ? 'Ẩn' : 'Hiện'}
-                  </button>
-                  {aiApiKey && (
-                    <button
-                      type="button"
-                      className="btn-mini btn-danger-text"
-                      onClick={handleClearApiKey}
-                    >
-                      Xóa
-                    </button>
-                  )}
-                </div>
-                <span className="field-hint">
-                  {aiApiKey.trim()
-                    ? 'Nhấn Lưu cấu hình để áp dụng key cho lần tạo gợi ý tiếp theo.'
-                    : 'ℹ Chưa có Key: Hệ thống sẽ tự động dùng Mock Knowledge Base chuẩn Thầy Minh để bạn thử nghiệm đầy đủ.'}
-                </span>
-              </label>
+              <fieldset className="ai-mode-fieldset">
+                <legend>Nguồn cấu hình</legend>
+                <label className="ai-mode-option">
+                  <input type="radio" name="ai-mode" checked={aiMode === 'system'} onChange={() => setAiMode('system')} />
+                  <span><strong>Cấu hình hệ thống</strong><small>Không gửi key/model override từ trình duyệt.</small></span>
+                </label>
+                <label className="ai-mode-option">
+                  <input type="radio" name="ai-mode" checked={aiMode === 'user_override'} onChange={() => setAiMode('user_override')} />
+                  <span><strong>Cấu hình riêng</strong><small>Dùng provider, key và model dưới đây cho request của bạn.</small></span>
+                </label>
+              </fieldset>
 
-              <label className="settings-field">
-                <span className="field-label">Chọn Mô hình AI (Model ID)</span>
-                <input aria-label="Mã model AI" className="minimal-input ai-key-input" value={aiModel} onChange={(e) => setAiModel(e.target.value)} placeholder="Nhập mã model chính xác" />
-                <span className="field-hint">
-                  Nhấn Lưu cấu hình để áp dụng model. Key và model sẽ được kiểm tra khi tạo gợi ý.
-                </span>
-              </label>
+              {aiMode === 'user_override' && (
+                <>
+                  <AiProviderFields provider={aiProvider} baseUrl={aiBaseUrl} onProvider={setAiProvider} onBaseUrl={setAiBaseUrl} />
+                  <label className="settings-field">
+                    <span className="field-label">AI API Key</span>
+                    <div className="input-password-row">
+                      <input
+                        type={showKeySecret ? 'text' : 'password'}
+                        className="minimal-input font-mono"
+                        placeholder="Dán API key của nhà cung cấp"
+                        value={aiApiKey}
+                        onChange={(e) => setAiApiKey(e.target.value)}
+                        autoComplete="off"
+                      />
+                      <button type="button" className="btn-mini" onClick={() => setShowKeySecret((prev) => !prev)}>
+                        {showKeySecret ? 'Ẩn' : 'Hiện'}
+                      </button>
+                      {aiApiKey && (
+                        <button type="button" className="btn-mini btn-danger-text" onClick={handleClearApiKey}>
+                          Xóa
+                        </button>
+                      )}
+                    </div>
+                  </label>
+
+                  <label className="settings-field">
+                    <span className="field-label">Mã model</span>
+                    <input className="minimal-input ai-key-input" value={aiModel} onChange={(e) => setAiModel(e.target.value)} placeholder="Nhập mã model chính xác" />
+                  </label>
+
+                  <label className="checkbox-label ai-remember-key">
+                    <input type="checkbox" checked={rememberAiKey} onChange={(e) => setRememberAiKey(e.target.checked)} />
+                    <span>Ghi nhớ API key trên thiết bị này</span>
+                  </label>
+                  <p className="field-hint">Mặc định key chỉ tồn tại trong phiên trình duyệt hiện tại.</p>
+                </>
+              )}
+
+              {aiSettingsErrors.length > 0 && (
+                <div className="settings-error-summary" role="alert" tabIndex={-1}>
+                  <strong>Chưa thể áp dụng cấu hình:</strong>
+                  <ul>{aiSettingsErrors.map((message) => <li key={message}>{message}</li>)}</ul>
+                </div>
+              )}
+              {aiConnectionStatus && <div className="settings-success" role="status">{aiConnectionStatus}</div>}
+              {aiMode === 'system' && (
+                <button type="button" className="btn-danger-text btn-clear-ai-override" onClick={handleUseSystemAi}>
+                  Xóa toàn bộ cấu hình riêng đã lưu
+                </button>
+              )}
             </div>
 
             <div className="modal-footer">
+              <button type="button" className="btn-secondary" onClick={handleTestAiConnection} disabled={isTestingAi}>
+                {isTestingAi ? 'Đang kiểm tra…' : 'Kiểm tra kết nối'}
+              </button>
               <button
                 type="button"
                 className="btn-secondary"
@@ -1051,6 +1173,7 @@ function mapConversationSummary(
     id: item.id,
     pageId: item.pageId,
     pageName: item.pageName || pageNameById.get(item.pageId),
+    studentId: item.customerId || item.id,
     studentName: item.customerName || 'Khách hàng Pancake',
     lastMessage: item.lastMessage || 'Chưa có nội dung tin nhắn',
     lastActiveAt: formatTimestamp(item.updatedAt),
@@ -1121,7 +1244,15 @@ function getAttachmentText(attachments: BackendChatMessage['attachments']) {
 }
 
 function getErrorMessage(error: unknown) {
+  if (error instanceof ApiError) {
+    const reference = error.requestId ? ` (mã: ${error.requestId})` : '';
+    return `${error.message}${reference}`;
+  }
   return error instanceof Error ? error.message : 'Có lỗi xảy ra';
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === 'AbortError';
 }
 
 function fallbackCopy(text: string, setCopySuccess: (value: boolean) => void) {

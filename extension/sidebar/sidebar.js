@@ -60,19 +60,24 @@
 
       // Widget → parent page (content script bridge listens on window)
       if (event.source === frame.contentWindow) {
+        let widgetOrigin = '';
+        try { widgetOrigin = new URL(currentUrl, location.href).origin; } catch (_) {}
+        if (!widgetOrigin || event.origin !== widgetOrigin) return;
         if (data.type === 'widget-ready') {
           showWaiting(false);
         }
         try {
-          window.parent.postMessage(data, '*');
+          window.parent.postMessage(data, document.referrer ? new URL(document.referrer).origin : '*');
         } catch (_) { /* ignore */ }
         return;
       }
 
       // Extension / page → widget
       if (frame.contentWindow && event.source !== frame.contentWindow) {
+        if (event.source !== window.parent) return;
+        if (document.referrer && event.origin !== new URL(document.referrer).origin) return;
         try {
-          frame.contentWindow.postMessage(data, '*');
+          frame.contentWindow.postMessage(data, new URL(currentUrl, location.href).origin);
         } catch (_) { /* ignore */ }
       }
     });

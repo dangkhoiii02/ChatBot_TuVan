@@ -37,6 +37,14 @@ export type MessageAttachment = {
   name?: string;
 };
 
+export type PronounPair = {
+  senderCall: string;
+  recipientCall: string;
+  label?: string;
+};
+
+export type SuggestionMode = 'chat' | 'teacher_review';
+
 export type SuggestionIntent = 'check_in' | 'assignment_feedback' | 'sensitive' | 'unknown';
 
 export type SuggestionResult = {
@@ -51,13 +59,6 @@ export type SuggestionResult = {
     id: string;
     tone: string;
     content: string;
+    usedFacts?: string[];
   }>;
-};
-
-export type DemoReply = {
-  id: string;
-  conversationId: string;
-  content: string;
-  sourceSuggestionId?: string;
-  createdAt: string;
 };

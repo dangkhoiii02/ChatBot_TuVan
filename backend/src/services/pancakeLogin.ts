@@ -2,6 +2,7 @@ import { config } from '../config.js';
 import { HttpError } from '../utils/httpError.js';
 import { activeUsersCache } from './activeUsersCache.js';
 import { extractUidFromAccessToken } from './sessionToken.js';
+import { cachePancakePageAccessToken } from './pancakeClient.js';
 
 const REQUEST_TIMEOUT_MS = 12_000;
 
@@ -18,13 +19,9 @@ export async function loginWithPancakeUserToken(accessToken: string): Promise<Lo
   }
 
   const isDemo = ['demo', 'mock', 'test'].includes(token.toLowerCase()) || token.startsWith('demo_');
-  if (isDemo && config.nodeEnv === 'production') {
+  if (isDemo && (config.nodeEnv === 'production' || !config.allowDemoMode)) {
     throw new HttpError(403, 'Demo login is disabled in production');
   }
-  if (!isDemo && !config.pancake.pageId.trim()) {
-    throw new HttpError(503, 'Missing PANCAKE_PAGE_ID');
-  }
-
   if (isDemo) {
     const demoPageId = config.pancake.pageId.trim() || 'demo-page';
     const demoUserId = 'demo_user';
@@ -36,13 +33,18 @@ export async function loginWithPancakeUserToken(accessToken: string): Promise<Lo
     };
   }
 
-  const pageId = config.pancake.pageId.trim();
   try {
     const pagesRaw = await fetchPancakePages(token);
-    const page = findPageById(pagesRaw, pageId);
+    const configuredPageId = config.pancake.pageId.trim();
+    const page = configuredPageId
+      ? findPageById(pagesRaw, configuredPageId)
+      : firstAccessiblePage(pagesRaw);
     if (!page) {
-      throw new HttpError(403, 'User cannot access configured page', 'PAGE_NOT_FOUND');
+      throw new HttpError(403, 'Token không có page Pancake đang hoạt động.', 'PAGE_NOT_FOUND');
     }
+
+    const pageId = readPageId(page);
+    if (!pageId) throw new HttpError(502, 'Pancake không trả về page ID.', 'PAGE_ID_MISSING');
 
     const userId = extractUidFromAccessToken(token);
     if (!userId) {
@@ -50,8 +52,15 @@ export async function loginWithPancakeUserToken(accessToken: string): Promise<Lo
     }
 
     const activeUserIds = resolveActiveUserIds(page);
-    if (!activeUserIds.has(userId)) {
+    if (activeUserIds.size > 0 && !activeUserIds.has(userId)) {
       throw new HttpError(403, 'User is not active for this page', 'USER_NOT_ACTIVE');
+    }
+    activeUserIds.add(userId);
+
+    const pageAccessToken = readPageAccessToken(page);
+    if (pageAccessToken) cachePancakePageAccessToken(pageId, pageAccessToken);
+    else if (!(config.pancake.pageId === pageId && config.pancake.pageAccessToken)) {
+      throw new HttpError(502, 'Pancake không trả về page access token.', 'PAGE_ACCESS_TOKEN_MISSING');
     }
 
     activeUsersCache.set(pageId, activeUserIds);
@@ -64,6 +73,24 @@ export async function loginWithPancakeUserToken(accessToken: string): Promise<Lo
   } catch (error) {
     throw error;
   }
+}
+
+function firstAccessiblePage(raw: unknown): Record<string, unknown> | undefined {
+  return extractPageItems(raw).find(
+    (item): item is Record<string, unknown> => Boolean(item && typeof item === 'object')
+  );
+}
+
+function readPageId(page: Record<string, unknown>) {
+  const value = page.id ?? page.page_id ?? page.pageId;
+  return value == null ? '' : String(value).trim();
+}
+
+function readPageAccessToken(page: Record<string, unknown>) {
+  for (const value of [page.page_access_token, page.pageAccessToken, page.access_token, page.accessToken]) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
 }
 
 async function fetchPancakePages(accessToken: string) {

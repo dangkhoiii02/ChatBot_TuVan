@@ -23,6 +23,7 @@ const envSchema = z.object({
     .default('0'),
   /** When 1, staff APIs also accept phase-1 X-User-Id against env CSV (dev only). */
   ALLOW_DEV_USER_HEADER: z.enum(['0', '1', 'true', 'false']).optional().default('0'),
+  ALLOW_DEMO_MODE: z.enum(['0', '1', 'true', 'false']).optional().default('0'),
   APP_SESSION_SECRET: z.string().optional().default(''),
   APP_SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 60 * 12),
   PANCAKE_CONVERSATION_LIMIT: z.coerce.number().int().positive().max(50).default(30),
@@ -31,8 +32,13 @@ const envSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional().default(''),
   GEMINI_API_KEY: z.string().optional().default(''),
   GEMINI_MODEL: z.string().optional().default(''),
-  AI_KNOWLEDGE_DIR: z.string().default('../data'),
-  DEMO_REPLY_STORE_PATH: z.string().default('./data/demo_replies.jsonl')
+  OPENAI_API_KEY: z.string().optional().default(''),
+  OPENAI_MODEL: z.string().optional().default(''),
+  OPENAI_BASE_URL: z.string().optional().default(''),
+  AI_API_KEY: z.string().optional().default(''),
+  AI_MODEL: z.string().optional().default(''),
+  AI_BASE_URL: z.string().optional().default(''),
+  AI_KNOWLEDGE_DIR: z.string().default('../data')
 });
 
 const env = envSchema.parse(process.env);
@@ -76,14 +82,17 @@ export const config = {
     enableEnvActiveUserFallback: truthyFlag(env.ENABLE_ENV_ACTIVE_USER_FALLBACK),
     allowDevUserHeader: truthyFlag(env.ALLOW_DEV_USER_HEADER)
   },
+  allowDemoMode: truthyFlag(env.ALLOW_DEMO_MODE),
   ai: {
     provider: env.AI_PROVIDER,
     anthropicApiKey: env.ANTHROPIC_API_KEY,
     geminiApiKey: env.GEMINI_API_KEY,
     geminiModel: env.GEMINI_MODEL || '',
+    openaiApiKey: env.OPENAI_API_KEY || env.AI_API_KEY || '',
+    openaiModel: env.OPENAI_MODEL || env.AI_MODEL || '',
+    openaiBaseUrl: env.OPENAI_BASE_URL || env.AI_BASE_URL || '',
     knowledgeDir: resolveBackendPath(env.AI_KNOWLEDGE_DIR || '../data')
-  },
-  demoReplyStorePath: resolveBackendPath(env.DEMO_REPLY_STORE_PATH)
+  }
 };
 
 export function isPancakeConfigured() {

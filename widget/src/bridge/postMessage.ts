@@ -27,7 +27,7 @@ export function isHostMessage(data: unknown): data is HostToWidgetMessage {
 
 export function emitToHost(message: WidgetToHostMessage): void {
   try {
-    window.parent.postMessage(message, '*');
+    window.parent.postMessage(message, getParentOrigin());
   } catch (err) {
     console.warn('[thay-minh-widget] postMessage failed', err);
   }
@@ -68,11 +68,22 @@ export function emitRequestDomMessages(requestId: string): void {
 
 export function listenHostMessages(handler: (msg: HostToWidgetMessage) => void): () => void {
   const onMessage = (event: MessageEvent) => {
+    if (event.source !== window.parent) return;
+    if (event.origin !== getParentOrigin()) return;
     if (!isHostMessage(event.data)) return;
     handler(event.data);
   };
   window.addEventListener('message', onMessage);
   return () => window.removeEventListener('message', onMessage);
+}
+
+function getParentOrigin() {
+  try {
+    if (document.referrer) return new URL(document.referrer).origin;
+  } catch {
+    // Fall through to the widget origin.
+  }
+  return window.location.origin;
 }
 
 /** Promise wrapper for DOM messages fallback (B). */

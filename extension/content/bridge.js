@@ -37,10 +37,8 @@
   function postToWidget(payload) {
     if (!targetFrame || !targetFrame.contentWindow) return;
     try {
-      targetFrame.contentWindow.postMessage(
-        { source: BRIDGE_SOURCE, ...payload },
-        '*'
-      );
+      const targetOrigin = new URL(targetFrame.src, location.href).origin;
+      targetFrame.contentWindow.postMessage({ source: BRIDGE_SOURCE, ...payload }, targetOrigin);
     } catch (err) {
       console.warn('[thay-minh] postToWidget failed:', err);
     }
@@ -174,6 +172,7 @@
     return [
       c && c.conversationId != null ? String(c.conversationId) : '',
       c && c.pageId != null ? String(c.pageId) : '',
+      c && c.studentId != null ? String(c.studentId) : '',
       c && c.studentName != null ? String(c.studentName) : '',
     ].join('|');
   }
@@ -199,6 +198,7 @@
       postToWidget({
         type: 'conversation-context',
         conversationId: c.conversationId != null ? c.conversationId : null,
+        studentId: c.studentId != null ? c.studentId : null,
         studentName: c.studentName != null ? c.studentName : null,
         pageId: c.pageId != null ? c.pageId : null,
         url:
@@ -251,6 +251,7 @@
 
   function handleIncoming(event) {
     const data = event.data;
+    if (!targetFrame || event.source !== targetFrame.contentWindow) return;
     if (!isCopilotMessage(data)) return;
 
     switch (data.type) {
@@ -311,6 +312,7 @@
 
   function handleHookMessage(event) {
     // Page-world hook posts to the same window
+    if (event.source !== window || event.origin !== window.location.origin) return;
     const data = event.data;
     if (!data || typeof data !== 'object') return;
     if (data.source !== HOOK_SOURCE) return;
@@ -330,18 +332,15 @@
       const cid =
         data.conversationId != null ? String(data.conversationId).trim() : '';
       if (!cid) return;
-      let prev = '';
       try {
-        prev = sessionStorage.getItem('thay-minh:conversationId') || '';
         sessionStorage.setItem('thay-minh:conversationId', cid);
         if (data.pageId) {
           sessionStorage.setItem('thay-minh:pageId', String(data.pageId));
         }
       } catch (_) {}
-      // Only emit when id actually changes (network can repeat same conv)
-      if (cid !== prev) {
-        schedulePushConversationContext();
-      }
+      // Always refresh: the hook writes sessionStorage before this listener runs,
+      // so comparing with the stored value can hide the first capture.
+      schedulePushConversationContext();
     }
   }
 

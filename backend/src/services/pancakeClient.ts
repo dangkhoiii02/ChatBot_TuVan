@@ -43,6 +43,26 @@ export const pancakeClient = {
   }
 };
 
+export function cachePancakePageAccessToken(pageId: string, token: string) {
+  const normalizedPageId = pageId.trim();
+  const normalizedToken = token.trim();
+  if (normalizedPageId && normalizedToken) cachedPageAccessTokens.set(normalizedPageId, normalizedToken);
+}
+
+export function hasPancakePageAccess(pageId?: string) {
+  const normalizedPageId = pageId?.trim();
+  if (normalizedPageId && cachedPageAccessTokens.has(normalizedPageId)) return true;
+  return Boolean(
+    config.pancake.pageId &&
+      config.pancake.pageAccessToken &&
+      (!normalizedPageId || normalizedPageId === config.pancake.pageId)
+  );
+}
+
+export function hasAnyPancakePageAccess() {
+  return cachedPageAccessTokens.size > 0 || isPancakeConfigured();
+}
+
 async function requestPancakePage(
   pageId: string,
   pathname: string,
@@ -126,7 +146,7 @@ function resolvePageId(pageId?: string) {
 }
 
 function assertPancakeConfigured() {
-  if (!isPancakeConfigured()) {
+  if (!hasAnyPancakePageAccess()) {
     throw new HttpError(
       503,
       'Missing PANCAKE_PAGE_ACCESS_TOKEN and/or PANCAKE_PAGE_ID in backend environment',
@@ -137,10 +157,10 @@ function assertPancakeConfigured() {
 
 /** Only env page token — no generate from user access_token. */
 function getPageAccessToken(pageId: string) {
-  assertPancakeConfigured();
-
   const cachedToken = cachedPageAccessTokens.get(pageId);
   if (cachedToken) return cachedToken;
+
+  assertPancakeConfigured();
 
   if (config.pancake.pageId && pageId !== config.pancake.pageId) {
     throw new HttpError(

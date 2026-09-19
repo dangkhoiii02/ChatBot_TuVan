@@ -5,11 +5,9 @@ export interface ChatThreadProps {
   conversation?: Conversation;
   draftMessage: string;
   onDraftChange: (value: string) => void;
-  onSendDemo: () => void;
   onCopyDraft: () => void;
   copySuccess?: boolean;
   isLoadingMessages?: boolean;
-  isSendingDemo?: boolean;
   conflictDialog?: { isOpen: boolean; pendingContent: string };
   onResolveConflict?: (action: 'replace' | 'append' | 'cancel') => void;
   onOpenAssistantMobile?: () => void;
@@ -38,11 +36,9 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
   conversation,
   draftMessage,
   onDraftChange,
-  onSendDemo,
   onCopyDraft,
   copySuccess,
   isLoadingMessages,
-  isSendingDemo,
   conflictDialog,
   onResolveConflict,
   onOpenAssistantMobile
@@ -84,12 +80,7 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
       .toUpperCase();
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-      e.preventDefault();
-      if (draftMessage.trim()) {
-        onSendDemo();
-      }
-    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') e.preventDefault();
   };
 
   return (
@@ -251,7 +242,7 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
 
           <textarea
             className="composer-textarea"
-            placeholder="Nhập nội dung phản hồi học viên (nhấn Ctrl + Enter hoặc Cmd + Enter để gửi demo)..."
+            placeholder="Nhập hoặc chỉnh nội dung, sau đó sao chép sang Pancake…"
             value={draftMessage}
             onChange={(e) => onDraftChange(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -260,7 +251,9 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
 
           <div className="composer-bottom-bar">
             <div className="composer-hints">
-              <span className="hint-text">💡 Dùng gợi ý AI từ cột bên phải hoặc tự soạn thảo</span>
+              <span className="hint-text">
+                Sao chép nội dung và kiểm tra lại trước khi gửi trên Pancake.
+              </span>
             </div>
 
             <div className="composer-buttons">
@@ -274,15 +267,6 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
                 {copySuccess ? '✓ Đã copy!' : '📋 Sao chép'}
               </button>
 
-              <button
-                type="button"
-                className="btn-action btn-send"
-                onClick={onSendDemo}
-                disabled={!draftMessage.trim() || isSendingDemo}
-                title="Gửi tin nhắn thử nghiệm vào luồng hội thoại"
-              >
-                {isSendingDemo ? 'Đang lưu...' : 'Gửi demo ↵'}
-              </button>
             </div>
           </div>
         </div>

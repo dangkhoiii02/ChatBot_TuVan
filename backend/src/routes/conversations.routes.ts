@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { config, isPancakeConfigured } from '../config.js';
-import { pancakeClient } from '../services/pancakeClient.js';
+import { config } from '../config.js';
+import { hasPancakePageAccess, pancakeClient } from '../services/pancakeClient.js';
 import { normalizeConversation, normalizeMessage } from '../services/pancakeNormalizer.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { HttpError } from '../utils/httpError.js';
@@ -28,9 +28,10 @@ conversationsRouter.get(
     const query = conversationsQuerySchema.parse(req.query);
     const limit = query.limit ?? config.pancake.conversationLimit;
     const pageIds = getPageIds(query.pageIds);
+    assertPageAccess(req, pageIds);
 
     // If Pancake is configured and not purely demo-page, query Pancake
-    if (isPancakeConfigured() && !pageIds.includes('demo-page')) {
+    if (pageIds.every((pageId) => hasPancakePageAccess(pageId))) {
       try {
         const results = await Promise.all(
           pageIds.map(async (pageId) => {
@@ -51,8 +52,15 @@ conversationsRouter.get(
 
         return res.json({ items });
       } catch (err) {
-        console.warn('Pancake listConversations failed, falling back to local database:', err);
+        if (!config.allowDemoMode) {
+          throw new HttpError(502, 'Không tải được hội thoại từ Pancake. Vui lòng thử lại.', 'PANCAKE_UNAVAILABLE');
+        }
+        console.warn('Pancake listConversations failed, demo fallback enabled:', err);
       }
+    }
+
+    if (!config.allowDemoMode) {
+      throw new HttpError(503, 'Pancake chưa được cấu hình trên máy chủ.', 'PANCAKE_NOT_CONFIGURED');
     }
 
     // Fallback or demo mode: fetch from SQLite database
@@ -101,9 +109,10 @@ conversationsRouter.get(
 
     const query = messagesQuerySchema.parse(req.query);
     const limit = query.limit ?? config.pancake.messageLimit;
+    assertPageAccess(req, [query.pageId || '']);
 
     // Try Pancake if configured
-    if (isPancakeConfigured() && query.pageId !== 'demo-page') {
+    if (hasPancakePageAccess(query.pageId)) {
       try {
         const raw = await pancakeClient.listMessages({
           pageId: query.pageId,
@@ -121,8 +130,15 @@ conversationsRouter.get(
           items
         });
       } catch (err) {
-        console.warn(`Pancake listMessages failed for ${conversationId}, falling back to local database:`, err);
+        if (!config.allowDemoMode) {
+          throw new HttpError(502, 'Không tải được tin nhắn từ Pancake. Vui lòng thử lại.', 'PANCAKE_UNAVAILABLE');
+        }
+        console.warn(`Pancake listMessages failed for ${conversationId}, demo fallback enabled:`, err);
       }
+    }
+
+    if (!config.allowDemoMode) {
+      throw new HttpError(503, 'Pancake chưa được cấu hình trên máy chủ.', 'PANCAKE_NOT_CONFIGURED');
     }
 
     // Fallback: fetch from SQLite database
@@ -171,6 +187,13 @@ function extractItems(raw: unknown): unknown[] {
   }
 
   return [];
+}
+
+function assertPageAccess(req: Express.Request, pageIds: string[]) {
+  const allowedPageId = req.staffAuth?.pageId;
+  if (!allowedPageId || pageIds.some((pageId) => pageId !== allowedPageId)) {
+    throw new HttpError(403, 'Không có quyền truy cập page này.', 'PAGE_ACCESS_DENIED');
+  }
 }
 
 function getPageIds(value?: string) {

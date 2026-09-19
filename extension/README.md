@@ -1,7 +1,7 @@
 # Thầy Minh Copilot — Chrome Extension (X2)
 
 MV3 extension that injects a **floating ~360×560** AI copilot panel into Pancake chat (drag ⠿ to move; corner to resize).
-Hosts the Dev 1 Vite React widget in an iframe and implements **fill-composer** via `postMessage`.
+Hosts the packed React widget in an iframe and implements **fill-composer** via `postMessage`.
 
 ## Load unpacked
 
@@ -63,7 +63,7 @@ Every message includes `source: 'thay-minh-copilot'`.
 | Widget→ext | `widget-ready` | Reply `bridge-ready { version: 1 }` + flat `conversation-context` |
 | Widget→ext | `fill-composer` | Write text into Pancake composer; reply `fill-composer-result` |
 | Ext→widget | `bridge-ready` | Handshake |
-| Ext→widget | `conversation-context` | **Flat** fields: `conversationId`, `studentName`, `pageId`, `url` |
+| Ext→widget | `conversation-context` | **Flat** fields: `conversationId`, `studentId`, `studentName`, `pageId`, `url` |
 | Ext→widget | `fill-composer-result` | `{ ok, error?, requestId? }` |
 | Ext→widget | `pancake-access-token` | `{ accessToken }` (do not log raw) |
 | Ext→widget | `dom-messages-result` | `{ requestId, ok, messages?, error? }` |
@@ -71,10 +71,10 @@ Every message includes `source: 'thay-minh-copilot'`.
 
 `fill-composer` never auto-sends; it only fills the composer.
 
-## X3 still open
+## Việc cần kiểm tra trên tenant thật
 
-- Calibrate conversation id / student name / pageId selectors in `pancake-dom.js`
-- Re-emit `conversation-context` on conversation switch
+- Hiệu chỉnh selector conversation id / student name / pageId trong `pancake-dom.js` nếu giao diện Pancake của tenant khác.
+- Smoke test chuyển hội thoại, lấy tin nhắn, tạo gợi ý và đổ bản nháp trước khi phát hành.
 
 
 ## E1 — Pancake access_token + DOM messages
@@ -103,7 +103,7 @@ Every message includes `source: 'thay-minh-copilot'`.
 On `widget-ready` and whenever the active conversation appears to change, the extension emits flat:
 
 ```js
-{ type: 'conversation-context', conversationId, studentName, pageId, url, source: 'thay-minh-copilot' }
+{ type: 'conversation-context', conversationId, studentId, studentName, pageId, url, source: 'thay-minh-copilot' }
 ```
 
 ### Selector confidence
@@ -126,7 +126,7 @@ Hosts matched: `pages.fm`, `*.pages.fm`, `pancake.vn`, `*.pancake.vn`, `crm.panc
 
 - `extension/widget/` is the built UI (no Vite required for smoke)
 - `web_accessible_resources` includes `widget/*` and `widget/assets/*`
-- Manifest version **0.3.1**
+- Manifest version **0.5.0**
 - Shell logic lives in `sidebar/sidebar.js` (no inline `<script>` — MV3 CSP)
 - Sync also strips `crossorigin` from packed `widget/index.html`
 - Do not edit `widget/src` from this track — only consume dist via sync script

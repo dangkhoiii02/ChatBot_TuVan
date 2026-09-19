@@ -1,45 +1,44 @@
 import { useEffect, useState } from 'react';
 import type { PronounPair, Suggestion } from '../../types';
-import { emptyGradePhrase, mockGradePhrases } from '../../lib/mockGradePhrases';
-import { DEFAULT_PAIR, applyPronouns } from '../../lib/applyPronouns';
 import { SuggestionCard } from '../SuggestionCard';
 
 interface Props {
   pronouns: PronounPair;
   onUsePhrase: (text: string) => void;
   onCopy: (text: string) => void;
+  onGenerate: (note: string) => Promise<Suggestion[]>;
 }
 
-export function GradingTab({ pronouns, onUsePhrase, onCopy }: Props) {
+export function GradingTab({ pronouns, onUsePhrase, onCopy, onGenerate }: Props) {
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [phrases, setPhrases] = useState<Suggestion[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [error, setError] = useState('');
 
-  // Re-apply pronouns to existing phrase cards when pair changes
+  // Results are tied to the pronoun pair sent to the backend; regenerate after a change.
   useEffect(() => {
-    setPhrases((prev) => {
-      if (!prev) return prev;
-      return prev.map((p) => ({
-        ...p,
-        text: applyPronouns(p.baseText, DEFAULT_PAIR, pronouns),
-      }));
-    });
-  }, [pronouns]);
+    setPhrases(null);
+    setSelectedId(null);
+  }, [pronouns.listener, pronouns.speaker]);
 
-  const compose = () => {
+  const compose = async () => {
+    const trimmed = note.trim();
+    if (!trimmed) {
+      setError('Hãy nhập nhận xét chuyên môn trước khi soạn cách nói.');
+      return;
+    }
     setLoading(true);
     setPhrases(null);
     setSelectedId(null);
-    window.setTimeout(() => {
-      const trimmed = note.trim();
-      if (!trimmed) {
-        setPhrases([emptyGradePhrase(pronouns)]);
-      } else {
-        setPhrases(mockGradePhrases(trimmed, pronouns));
-      }
+    setError('');
+    try {
+      setPhrases(await onGenerate(trimmed));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Không tạo được nhận xét.');
+    } finally {
       setLoading(false);
-    }, 500);
+    }
   };
 
   return (
@@ -57,6 +56,7 @@ export function GradingTab({ pronouns, onUsePhrase, onCopy }: Props) {
       <button type="button" className="btn btn-outline" disabled={loading} onClick={compose}>
         {loading ? 'Đang soạn…' : 'Soạn cách nói'}
       </button>
+      {error && <div className="inline-error" role="alert">{error}</div>}
 
       {loading && <div className="empty-state">AI đang soạn 3 cách nói…</div>}
 
@@ -80,7 +80,7 @@ export function GradingTab({ pronouns, onUsePhrase, onCopy }: Props) {
 
       {!loading && !phrases && (
         <div className="empty-state">
-          Nhập nhận xét (hoặc để trống) rồi bấm “Soạn cách nói”.
+          Nhập nhận xét của giáo viên rồi bấm “Soạn cách nói”. AI không tự xem video.
         </div>
       )}
     </div>

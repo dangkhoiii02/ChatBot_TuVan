@@ -1,4 +1,4 @@
-import { readAISettings } from '../../../shared/ai-settings';
+import { getAIRequestOverride, readAISettings, type AISettings } from '../../../shared/ai-settings';
 import { getSessionToken, setAppSession, clearAppSession } from '../lib/session';
 import { getStaffUserId } from '../lib/userId';
 import type {
@@ -8,12 +8,28 @@ import type {
   BackendPageSummary,
   BackendSuggestionResult,
   ChatMessage,
-  DemoReply
+  PronounPair,
+  StudentContext,
+  StudentProfile,
+  CustomField
 } from '../types';
 
 type JsonRecord = Record<string, unknown>;
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly code: string,
+    public readonly requestId?: string,
+    public readonly issues?: Array<{ path: Array<string | number>; message: string }>
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
 
 export type LoginResult = {
   sessionToken: string;
@@ -44,38 +60,48 @@ export function logoutAppSession() {
 }
 
 
-export async function getHealth() {
-  return requestJson<BackendHealth>('/api/health');
+export async function getHealth(signal?: AbortSignal) {
+  return requestJson<BackendHealth>('/api/health', { signal });
 }
 
-export async function getPages() {
-  return requestJson<{ items: BackendPageSummary[]; defaultSelectedPageIds: string[] }>('/api/pages');
+export async function getPages(signal?: AbortSignal) {
+  return requestJson<{ items: BackendPageSummary[]; defaultSelectedPageIds: string[] }>('/api/pages', { signal });
 }
 
-export async function getConversations(pageIds: string[], limit = 30) {
+export async function getConversations(pageIds: string[], limit = 30, signal?: AbortSignal) {
   const search = new URLSearchParams({
     pageIds: pageIds.join(','),
     limit: String(limit)
   });
   const data = await requestJson<{ items: BackendConversationSummary[] }>(
-    `/api/conversations?${search.toString()}`
+    `/api/conversations?${search.toString()}`,
+    { signal }
   );
   return data.items;
 }
 
-export async function getConversationMessages(conversationId: string, pageId: string, limit = 30) {
+export async function getConversationMessages(
+  conversationId: string,
+  pageId: string,
+  limit = 30,
+  signal?: AbortSignal
+) {
   const search = new URLSearchParams({
     pageId,
     limit: String(limit)
   });
   const data = await requestJson<{ conversationId: string; items: BackendChatMessage[] }>(
-    `/api/conversations/${encodeURIComponent(conversationId)}/messages?${search.toString()}`
+    `/api/conversations/${encodeURIComponent(conversationId)}/messages?${search.toString()}`,
+    { signal }
   );
   return data.items;
 }
 
 export async function createSuggestions(input: {
   conversationId: string;
+  studentId?: string;
+  contextRevision?: number;
+  pronouns?: PronounPair;
   messages: ChatMessage[];
   provider?: string;
   baseUrl?: string;
@@ -83,19 +109,23 @@ export async function createSuggestions(input: {
   model?: string;
 }) {
   const stored = readAISettings();
-  const apiKey = input.apiKey ?? stored.apiKey;
-  const model = input.model ?? stored.model;
-  const provider = input.provider ?? stored.provider;
-  const baseUrl = provider === 'custom' ? input.baseUrl ?? stored.baseUrl : undefined;
+  const explicit = input.apiKey || input.model || input.provider || input.baseUrl
+    ? {
+        apiKey: input.apiKey,
+        model: input.model,
+        provider: input.provider,
+        baseUrl: input.baseUrl
+      }
+    : getAIRequestOverride(stored);
 
   return requestJson<BackendSuggestionResult>('/api/suggestions', {
     method: 'POST',
     body: JSON.stringify({
       conversationId: input.conversationId,
-      apiKey,
-      model,
-      provider: apiKey || model || provider === 'mock' ? provider : undefined,
-      baseUrl,
+      studentId: input.studentId,
+      contextRevision: input.contextRevision,
+      pronouns: input.pronouns,
+      ...explicit,
       messages: input.messages.map((message) => ({
         id: message.id,
         conversationId: input.conversationId,
@@ -108,21 +138,184 @@ export async function createSuggestions(input: {
   });
 }
 
-export async function saveDemoReply(input: {
+export async function createTeacherReview(input: {
   conversationId: string;
-  content: string;
-  sourceSuggestionId?: string;
+  teacherInput: string;
+  pronouns?: PronounPair;
+  messages?: ChatMessage[];
+  provider?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
 }) {
-  const data = await requestJson<{ ok: true; item: DemoReply }>('/api/demo-replies', {
+  const stored = readAISettings();
+  const explicit = input.apiKey || input.model || input.provider || input.baseUrl
+    ? {
+        apiKey: input.apiKey,
+        model: input.model,
+        provider: input.provider,
+        baseUrl: input.baseUrl
+      }
+    : getAIRequestOverride(stored);
+
+  return requestJson<BackendSuggestionResult>('/api/suggestions', {
+    method: 'POST',
+    body: JSON.stringify({
+      conversationId: input.conversationId,
+      mode: 'teacher_review',
+      teacherInput: input.teacherInput,
+      pronouns: input.pronouns,
+      ...explicit,
+      messages: (input.messages || []).map((message) => ({
+        id: message.id,
+        conversationId: input.conversationId,
+        sender: message.sender,
+        text: message.text,
+        attachments: message.attachments || [],
+        createdAt: message.createdAt || new Date().toISOString()
+      }))
+    })
+  });
+}
+
+export async function getStudentContext(input: {
+  pageId: string;
+  studentId: string;
+  studentName: string;
+  signal?: AbortSignal;
+}) {
+  const query = new URLSearchParams({ pageId: input.pageId, studentName: input.studentName });
+  return requestJson<StudentContext>(
+    `/api/students/${encodeURIComponent(input.studentId)}/context?${query.toString()}`,
+    { signal: input.signal }
+  );
+}
+
+export async function saveStudentProfile(input: {
+  pageId: string;
+  studentId: string;
+  studentName: string;
+  revision: number;
+  profile: StudentProfile;
+}) {
+  const { customFields: _customFields, ...profile } = input.profile;
+  return requestJson<StudentContext>(`/api/students/${encodeURIComponent(input.studentId)}/profile`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      pageId: input.pageId,
+      studentName: input.studentName,
+      revision: input.revision,
+      profile
+    })
+  });
+}
+
+export async function createStudentMemory(input: {
+  pageId: string;
+  studentId: string;
+  studentName: string;
+  revision: number;
+  content: string;
+  reason?: string;
+  reviewAt?: string;
+}) {
+  return requestJson<StudentContext>(`/api/students/${encodeURIComponent(input.studentId)}/memories`, {
     method: 'POST',
     body: JSON.stringify(input)
   });
-  return data.item;
+}
+
+export async function updateStudentMemory(input: {
+  pageId: string;
+  studentId: string;
+  studentName: string;
+  revision: number;
+  memoryId: string;
+  action: 'update' | 'activate' | 'archive' | 'restore';
+  content?: string;
+  reason?: string;
+  reviewAt?: string | null;
+}) {
+  const { studentId, memoryId, ...body } = input;
+  return requestJson<StudentContext>(
+    `/api/students/${encodeURIComponent(studentId)}/memories/${encodeURIComponent(memoryId)}`,
+    { method: 'PATCH', body: JSON.stringify(body) }
+  );
+}
+
+export async function deleteStudentMemory(input: {
+  pageId: string;
+  studentId: string;
+  studentName: string;
+  revision: number;
+  memoryId: string;
+}) {
+  const { studentId, memoryId, ...body } = input;
+  return requestJson<StudentContext>(
+    `/api/students/${encodeURIComponent(studentId)}/memories/${encodeURIComponent(memoryId)}`,
+    { method: 'DELETE', body: JSON.stringify(body) }
+  );
+}
+
+export async function createStudentCustomField(input: {
+  pageId: string;
+  studentId: string;
+  studentName: string;
+  revision: number;
+  field: Omit<CustomField, 'id' | 'createdAt' | 'updatedAt' | 'source'> & {
+    source?: CustomField['source'];
+  };
+}) {
+  return requestJson<StudentContext>(`/api/students/${encodeURIComponent(input.studentId)}/custom-fields`, {
+    method: 'POST',
+    body: JSON.stringify(input)
+  });
+}
+
+export async function updateStudentCustomField(input: {
+  pageId: string;
+  studentId: string;
+  studentName: string;
+  revision: number;
+  fieldId: string;
+  value?: string;
+  useInSuggestions?: boolean;
+  hidden?: boolean;
+}) {
+  const { studentId, fieldId, ...body } = input;
+  return requestJson<StudentContext>(
+    `/api/students/${encodeURIComponent(studentId)}/custom-fields/${encodeURIComponent(fieldId)}`,
+    { method: 'PATCH', body: JSON.stringify(body) }
+  );
+}
+
+export async function deleteStudentCustomField(input: {
+  pageId: string;
+  studentId: string;
+  studentName: string;
+  revision: number;
+  fieldId: string;
+}) {
+  const { studentId, fieldId, ...body } = input;
+  return requestJson<StudentContext>(
+    `/api/students/${encodeURIComponent(studentId)}/custom-fields/${encodeURIComponent(fieldId)}`,
+    { method: 'DELETE', body: JSON.stringify(body) }
+  );
+}
+
+export async function validateAIConnection(settings: AISettings) {
+  const override = getAIRequestOverride(settings);
+  return requestJson<{ ok: true; provider: string; model: string }>('/api/ai/validate', {
+    method: 'POST',
+    body: JSON.stringify({ mode: settings.mode, ...override })
+  });
 }
 
 async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const requestId = crypto.randomUUID ? crypto.randomUUID() : `req-${Date.now()}`;
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'X-Request-Id': requestId,
     ...(init.headers as Record<string, string> | undefined)
   };
   delete headers['X-Skip-Auth'];
@@ -155,13 +348,22 @@ async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> 
       typeof payload.error === 'string'
         ? payload.error
         : `API error ${response.status}`;
-    if (response.status === 401 || code === 'AUTH_REQUIRED') {
-      throw new Error(code ? `${code}: ${message}` : `AUTH_REQUIRED: ${message}`);
+    if (response.status === 401 || code === 'AUTH_REQUIRED' || code === 'SESSION_EXPIRED') {
+      clearAppSession();
+      window.dispatchEvent(new Event('ttd:session-expired'));
     }
-    if (response.status === 403 && (code === 'USER_NOT_ACTIVE' || code === 'USER_NOT_ACTIVE')) {
-      throw new Error(`${code || 'USER_NOT_ACTIVE'}: ${message}`);
-    }
-    throw new Error(code ? `${code}: ${message}` : message);
+    const issues = Array.isArray(payload.issues)
+      ? (payload.issues as Array<{ path: Array<string | number>; message: string }>)
+      : undefined;
+    throw new ApiError(
+      message,
+      response.status,
+      code || `HTTP_${response.status}`,
+      typeof payload.requestId === 'string'
+        ? payload.requestId
+        : response.headers.get('X-Request-Id') || requestId,
+      issues
+    );
   }
 
   return payload as T;

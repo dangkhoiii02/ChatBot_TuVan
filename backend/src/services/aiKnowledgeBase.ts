@@ -13,22 +13,11 @@ export type RedFlagsConfig = {
   >;
 };
 
-export type FewShotSample = {
-  id?: string;
-  title?: string;
-  category?: string;
-  input_message?: string;
-  sensitivity?: 'xanh' | 'vang' | 'do';
-  flag_reason?: string;
-  model_replies?: Array<string | { tone?: string; content?: string }>;
-};
-
 export type AiKnowledgeBase = {
   persona: string;
   policy: string;
   redFlagsRaw: string;
   redFlags: RedFlagsConfig;
-  fewShots: FewShotSample[];
 };
 
 let cachedKnowledgeBase: Promise<AiKnowledgeBase> | null = null;
@@ -36,21 +25,6 @@ let cachedKnowledgeBase: Promise<AiKnowledgeBase> | null = null;
 export async function loadAiKnowledgeBase() {
   cachedKnowledgeBase ??= readAiKnowledgeBase();
   return cachedKnowledgeBase;
-}
-
-export function findMatchingFewShot(samples: FewShotSample[], text: string) {
-  const normalizedInput = normalizeVietnamese(text);
-  if (!normalizedInput) return undefined;
-
-  return samples.find((sample) => {
-    const sampleInput = normalizeVietnamese(sample.input_message || '');
-    if (!sampleInput) return false;
-
-    const inputPreview = normalizedInput.slice(0, 30);
-    const samplePreview = sampleInput.slice(0, 30);
-
-    return normalizedInput.includes(samplePreview) || sampleInput.includes(inputPreview);
-  });
 }
 
 export function normalizeVietnamese(text: string) {
@@ -63,19 +37,17 @@ export function normalizeVietnamese(text: string) {
 }
 
 async function readAiKnowledgeBase(): Promise<AiKnowledgeBase> {
-  const [persona, policy, redFlagsRaw, fewShotsRaw] = await Promise.all([
+  const [persona, policy, redFlagsRaw] = await Promise.all([
     readKnowledgeFile('persona.md'),
     readKnowledgeFile('policy.md'),
-    readKnowledgeFile('red_flags.json'),
-    readKnowledgeFile('few_shots.json')
+    readKnowledgeFile('red_flags.json')
   ]);
 
   return {
     persona,
     policy,
     redFlagsRaw,
-    redFlags: parseJson<RedFlagsConfig>(redFlagsRaw, { categories: {} }),
-    fewShots: parseJson<FewShotSample[]>(fewShotsRaw, [])
+    redFlags: parseJson<RedFlagsConfig>(redFlagsRaw, { categories: {} })
   };
 }
 
