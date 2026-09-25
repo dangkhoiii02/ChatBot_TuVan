@@ -9,6 +9,7 @@ import { healthRouter } from './routes/health.routes.js';
 import { pagesRouter } from './routes/pages.routes.js';
 import { suggestionsRouter } from './routes/suggestions.routes.js';
 import { studentsRouter } from './routes/students.routes.js';
+import { studentLearningRouter } from './routes/studentLearning.routes.js';
 import { aiRouter } from './routes/ai.routes.js';
 import { HttpError } from './utils/httpError.js';
 
@@ -31,6 +32,7 @@ export function createApp() {
   app.use('/api/pages', requireActiveUser, pagesRouter);
   app.use('/api/conversations', requireActiveUser, conversationsRouter);
   app.use('/api/suggestions', requireActiveUser, suggestionsRouter);
+  app.use('/api/students', requireActiveUser, studentLearningRouter);
   app.use('/api/students', requireActiveUser, studentsRouter);
   app.use('/api/ai', requireActiveUser, aiRouter);
 

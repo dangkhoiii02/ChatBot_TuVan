@@ -5,12 +5,10 @@
 
 # SQLite database files & WAL/SHM
 *.db
-*.db-wal
-*.db-shm
-*.db-journal
-storage/*.db
-storage/*.db-wal
-storage/*.db-shm
+*.db-*
+*.db.*
+storage/*.db*
+storage/app.db*
 # Backup and restore directories
 backups/
 restore_test/

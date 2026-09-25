@@ -13,6 +13,15 @@ cp .env.example .env
 pnpm dev
 ```
 
+### UI với dữ liệu giả, không cần tài khoản Pancake
+
+```bash
+cd backend
+npm run dev:fixtures-ui
+```
+
+Mở `http://127.0.0.1:5180/`. Lệnh này dựng SQLite tạm, tạo signed session giả cho `staff-test`/`page-test`, rồi chạy Backend và Vite. Auth/page authorization của Backend vẫn hoạt động; chế độ này chỉ có trong Vite dev và dừng lệnh sẽ xóa DB tạm. Production build vẫn hiện form đăng nhập.
+
 ### Pancake (single-page)
 
 - `PANCAKE_PAGE_ID`: page id dang dung.
@@ -74,6 +83,10 @@ pnpm start
 - `POST /api/suggestions` (Bearer session)
 - `GET|POST /api/demo-replies` (Bearer session)
 
+Trong chế độ chấm bài, client gửi `contextRevision` để phát hiện hồ sơ đã đổi. Chọn bài đang tập bằng `assignmentId`; nhập `assignmentTitle` sẽ tạo bài mới kể cả khi có bài khác trùng tên. `reviewSessionKey` giữ một lượt trả bài duy nhất khi thử lại cùng yêu cầu.
+
+Khi đồng bộ tin, backend xếp hàng trích xuất AI nếu đã chọn học viên và cấu hình nhà cung cấp AI thật. Worker xử lý tối đa 20 tin mỗi lô, thử lại khi nhà cung cấp lỗi và chỉ tạo đề xuất chờ nhân viên duyệt. Nút đề xuất AI cho phép đọc lô chưa xử lý ngay; checkpoint theo thứ tự ghi vào SQLite nên tin cũ được backfill sau vẫn được xử lý. Chế độ AI `mock` không tự gọi nhà cung cấp.
+
 ## QA checklist
 
 - `pnpm typecheck` / `pnpm build` pass.
@@ -82,5 +95,9 @@ pnpm start
 - Login acc ngoai list / sai page → `403`.
 - Staff API voi Bearer hop le → OK; thieu/invalid → `401`.
 - Conversations van dung `PANCAKE_PAGE_ACCESS_TOKEN` only.
+
+## Isolated backend tests
+
+Run `npm run build && npm test` from `backend/`. The adversarial integration suite sets `BACKEND_DATABASE_PATH` to a disposable SQLite file under the OS temp directory, seeds fixed fake IDs, signs a normal app session with a test-only secret, and removes the database in `finally`. It keeps the real auth middleware, authorization, ownership, services, and database writes in the request path. Pancake and AI HTTP responses are intercepted at `fetch`; no production credentials or stored development database are used. See [the adversarial test report](tests/ADVERSARIAL_TEST_REPORT.md) for covered cases and current results.
 
 Cấu hình AI đa nhà cung cấp, giới hạn hỗ trợ và kiểm thử: xem [README gốc](../README.md). Node.js 22.13+ cần thiết cho `node:sqlite`. Demo login chỉ hoạt động ngoài production; lỗi Pancake không cấp phiên demo.

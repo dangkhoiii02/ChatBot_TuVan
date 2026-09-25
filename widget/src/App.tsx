@@ -25,6 +25,11 @@ import {
   createSuggestions,
   createTeacherReview,
   getConversationMessages,
+  getConversationStudentLink,
+  getStudentSummary,
+  linkStudentToConversation,
+  syncConversationHistory,
+  confirmReviewSession,
   getStudentContext,
   logoutAppSession,
   resolveConversationByContext,
@@ -32,6 +37,9 @@ import {
   updateStudentCustomField,
   type ApiChatMessage,
   type StudentContextApi,
+  type StudentIdentityApi,
+  type StudentOptionApi,
+  type StudentSummaryApi,
 } from './lib/api';
 import { getAppSession, getSessionToken } from './lib/session';
 
@@ -60,6 +68,9 @@ export default function App() {
   const [activeDraft, setActiveDraft] = useState('');
   const [pronouns, setPronouns] = useState<PronounPair>(DEFAULT_PAIR);
   const [studentContext, setStudentContext] = useState<StudentContextApi | null>(null);
+  const [studentIdentity,setStudentIdentity]=useState<StudentIdentityApi|null>(null);
+  const [studentOptions,setStudentOptions]=useState<StudentOptionApi[]>([]);
+  const [studentSummary,setStudentSummary]=useState<StudentSummaryApi|null>(null);
   const [contextLoading, setContextLoading] = useState(false);
   const [contextError, setContextError] = useState('');
   const [bridgeReady, setBridgeReady] = useState(false);
@@ -79,6 +90,8 @@ export default function App() {
   const hasSessionRef = useRef(hasSession);
   const conversationIdRef = useRef(conversationId);
   const pageIdRef = useRef(pageId);
+  const studentIdRef=useRef<string|null>(studentId);
+  const studentRevisionRef=useRef<number|undefined>(undefined);
   const suggestionRequestRef = useRef(0);
   const contextResolveRef = useRef(0);
   useEffect(() => {
@@ -106,6 +119,7 @@ export default function App() {
   useEffect(() => {
     pageIdRef.current = pageId;
   }, [pageId]);
+  useEffect(()=>{studentIdRef.current=studentId;studentRevisionRef.current=studentSummary?.revision},[studentId,studentSummary?.revision]);
   useEffect(() => {
     const handleSessionExpired = () => {
       setHasSession(false);
@@ -187,6 +201,8 @@ export default function App() {
 
       const result = await createSuggestions({
         conversationId: convId,
+        studentId:studentIdRef.current||undefined,
+        contextRevision:studentRevisionRef.current,
         messages: messages.map((m) => ({
           id: m.id,
           conversationId: convId,
@@ -221,7 +237,6 @@ export default function App() {
     const applyConversationContext = (
       nextId: string,
       nextPageId: string | null,
-      nextStudentId?: string | null,
       nextStudentName?: string | null,
     ) => {
       setConversationId((prev) => {
@@ -236,6 +251,10 @@ export default function App() {
           setApiStatus('Đã đổi hội thoại — bấm tạo gợi ý');
           setClickBanner(null);
           setStudentContext(null);
+          setStudentIdentity(null);
+          setStudentOptions([]);
+          setStudentSummary(null);
+          setStudentId(null);
           setLastMessages([]);
           setContextError('');
         } else if (!prev) {
@@ -244,7 +263,10 @@ export default function App() {
         return nextId;
       });
       setPageId(nextPageId);
-      setStudentId(nextStudentId || deriveStudentId(nextId));
+      setStudentId(null);
+      setStudentIdentity(null);
+      setStudentOptions([]);
+      setStudentSummary(null);
       if (nextStudentName) setStudentName(nextStudentName);
     };
 
@@ -258,7 +280,7 @@ export default function App() {
         const resolvedPageId = msg.pageId || getAppSession()?.pageId || null;
         if (nextId) {
           contextResolveRef.current += 1;
-          applyConversationContext(nextId, resolvedPageId, msg.studentId, msg.studentName);
+          applyConversationContext(nextId, resolvedPageId, msg.studentName);
           return;
         }
         if (resolvedPageId && hasSessionRef.current) {
@@ -283,7 +305,6 @@ export default function App() {
               applyConversationContext(
                 match.id,
                 match.pageId || resolvedPageId,
-                match.customerId,
                 match.customerName,
               );
             })
@@ -328,19 +349,25 @@ export default function App() {
     const controller = new AbortController();
     setContextLoading(true);
     setContextError('');
-    getStudentContext({
-      pageId,
-      studentId: studentId || deriveStudentId(conversationId),
-      studentName,
-      signal: controller.signal,
-    })
-      .then((context) => {
+    getConversationStudentLink(conversationId,pageId,controller.signal)
+      .then(async ({identity,students}) => {
         if (controller.signal.aborted) return;
-        setStudentContext(context);
-        setPronouns({
-          speaker: context.profile.senderCall,
-          listener: context.profile.recipientCall,
-        });
+        setStudentIdentity(identity);setStudentOptions(students);
+        if(!identity.student) {
+          setStudentId(null);setStudentContext(null);setStudentSummary(null);
+          setStudentName(identity.customerName||'Chưa xác định');
+          return;
+        }
+        setStudentId(identity.student.id);setStudentName(identity.student.name);
+        const [context,summary]=await Promise.all([
+          getStudentContext({pageId,studentId:identity.student.id,studentName:identity.student.name,signal:controller.signal}),
+          getStudentSummary(identity.student.id,controller.signal)
+        ]);
+        if (controller.signal.aborted) return;
+        setStudentContext(context);setStudentSummary(summary);
+        setStudentIdentity({...identity,student:{...identity.student,revision:summary.revision}});
+        studentRevisionRef.current=summary.revision;
+        setPronouns({speaker:context.profile.senderCall,listener:context.profile.recipientCall});
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === 'AbortError') return;
@@ -350,7 +377,45 @@ export default function App() {
         if (!controller.signal.aborted) setContextLoading(false);
       });
     return () => controller.abort();
-  }, [conversationId, hasSession, pageId, studentId, studentName]);
+  }, [conversationId, hasSession, pageId]);
+
+  const refreshStudentSummary=useCallback(async()=>{
+    if(!studentId)return null;
+    const summary=await getStudentSummary(studentId);
+    setStudentSummary(summary);studentRevisionRef.current=summary.revision;
+    setStudentIdentity((identity)=>identity?.student?.id===studentId?{...identity,student:{...identity.student,revision:summary.revision}}:identity);
+    return summary;
+  },[studentId]);
+
+  const handleLinkStudent=useCallback(async(input:{studentId?:string;newStudentName?:string;importLegacyContext?:boolean})=>{
+    const convId=conversationIdRef.current;const pgId=pageIdRef.current;
+    if(!convId||!pgId)throw new Error('Chưa xác định hội thoại Pancake.');
+    const result=await linkStudentToConversation({conversationId:convId,pageId:pgId,...input});
+    setStudentIdentity(result.identity);setStudentOptions(result.students);
+    const linked=result.identity.student;
+    if(!linked){setStudentId(null);setStudentContext(null);setStudentSummary(null);return;}
+    setStudentId(linked.id);setStudentName(linked.name);
+    const [context,summary]=await Promise.all([
+      getStudentContext({pageId:pgId,studentId:linked.id,studentName:linked.name}),getStudentSummary(linked.id)
+    ]);
+    setStudentContext(context);setStudentSummary(summary);studentRevisionRef.current=summary.revision;
+    setStudentIdentity({...result.identity,student:{...linked,revision:summary.revision}});
+    setPronouns({speaker:context.profile.senderCall,listener:context.profile.recipientCall});
+  },[]);
+
+  const handleSyncHistory=useCallback(async()=>{
+    const convId=conversationIdRef.current;const pgId=pageIdRef.current;
+    if(!convId||!pgId)throw new Error('Chưa xác định hội thoại Pancake.');
+    const result=await syncConversationHistory({conversationId:convId,pageId:pgId,pages:3});
+    const messages=await getConversationMessages(convId,pgId,50);
+    setLastMessages(messages);await refreshStudentSummary();return result;
+  },[refreshStudentSummary]);
+
+  const handleConfirmReview=useCallback(async(reviewSessionId:string)=>{
+    if(!studentId)throw new Error('Chưa chọn học viên.');
+    await confirmReviewSession({studentId,reviewSessionId,confirmed:true,evidence:'Nhân viên xác nhận đã gửi nhận xét.'});
+    await refreshStudentSummary();
+  },[refreshStudentSummary,studentId]);
 
   const handlePronounsChange = (pair: PronounPair) => {
     const prevPair = pronouns;
@@ -406,7 +471,7 @@ export default function App() {
     setActiveDraft(text);
   };
 
-  const handleGenerateGrade = async (note: string): Promise<Suggestion[]> => {
+  const handleGenerateGrade = async (note: string,assignmentId:string,assignmentTitle:string,reviewSessionKey:string) => {
     const convId = conversationIdRef.current;
     if (!convId) throw new Error('Chưa xác định hội thoại Pancake hiện tại.');
     let messages = lastMessages;
@@ -427,8 +492,14 @@ export default function App() {
       teacherInput: note,
       pronouns,
       messages,
+      studentId:studentId||undefined,
+      contextRevision:studentSummary?.revision,
+      assignmentId:assignmentId||undefined,
+      assignmentTitle:assignmentTitle||undefined,
+      reviewSessionKey,
     });
-    return toSuggestionList(result.suggestions, pronouns);
+    await refreshStudentSummary();
+    return {phrases:toSuggestionList(result.suggestions, pronouns),reviewSessionId:result.reviewSessionId||undefined};
   };
 
   const handleSaveNotes = async (value: string) => {
@@ -541,10 +612,20 @@ export default function App() {
               onSaveNotes={handleSaveNotes}
               onAddMemory={handleAddMemory}
               onCustomFieldChange={handleCustomFieldChange}
+              identity={studentIdentity}
+              students={studentOptions}
+              summary={studentSummary}
+              conversationId={conversationId || ''}
+              messages={lastMessages}
+              onLink={handleLinkStudent}
+              onRefresh={refreshStudentSummary}
+              onSyncHistory={handleSyncHistory}
             />
           )}
           {tab === 'grading' && (
-            <GradingTab pronouns={pronouns} onUsePhrase={handleUsePhrase} onCopy={handleCopy} onGenerate={handleGenerateGrade} />
+            <GradingTab pronouns={pronouns} onUsePhrase={handleUsePhrase} onCopy={handleCopy} onGenerate={handleGenerateGrade}
+              conversationId={conversationId} studentLinked={Boolean(studentIdentity?.status === 'linked' && studentId)} summary={studentSummary}
+              onConfirmReview={handleConfirmReview} />
           )}
         </div>
       </div>
@@ -553,11 +634,6 @@ export default function App() {
       <div className="bridge-flag" data-bridge-ready={bridgeReady ? '1' : '0'} hidden />
     </div>
   );
-}
-
-function deriveStudentId(conversationId: string) {
-  const parts = conversationId.split('_').filter(Boolean);
-  return parts.length > 1 ? parts[parts.length - 1] : conversationId;
 }
 
 function getInitials(name: string) {

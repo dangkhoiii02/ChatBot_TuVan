@@ -11,7 +11,14 @@ import type {
   PronounPair,
   StudentContext,
   StudentProfile,
-  CustomField
+  CustomField,
+  StudentIdentity,
+  StudentOption,
+  StudentSummary,
+  StudentFact,
+  StudentIssue,
+  IssueDetail,
+  StudentProposal
 } from '../types';
 
 type JsonRecord = Record<string, unknown>;
@@ -143,6 +150,12 @@ export async function createTeacherReview(input: {
   teacherInput: string;
   pronouns?: PronounPair;
   messages?: ChatMessage[];
+  studentId?: string;
+  contextRevision?: number;
+  assignmentId?: string;
+  assignmentTitle?: string;
+  reviewSessionKey?: string;
+  reviewSessionId?: string;
   provider?: string;
   baseUrl?: string;
   apiKey?: string;
@@ -162,8 +175,14 @@ export async function createTeacherReview(input: {
     method: 'POST',
     body: JSON.stringify({
       conversationId: input.conversationId,
+      studentId: input.studentId,
+      contextRevision: input.contextRevision,
       mode: 'teacher_review',
       teacherInput: input.teacherInput,
+      assignmentId: input.assignmentId,
+      assignmentTitle: input.assignmentTitle,
+      reviewSessionKey: input.reviewSessionKey,
+      reviewSessionId: input.reviewSessionId,
       pronouns: input.pronouns,
       ...explicit,
       messages: (input.messages || []).map((message) => ({
@@ -176,6 +195,111 @@ export async function createTeacherReview(input: {
       }))
     })
   });
+}
+
+export async function getConversationStudentLink(conversationId:string,pageId:string,signal?:AbortSignal) {
+  const query=new URLSearchParams({pageId});
+  return requestJson<{identity:StudentIdentity;students:StudentOption[]}>(
+    `/api/conversations/${encodeURIComponent(conversationId)}/student-link?${query.toString()}`,{signal});
+}
+
+export async function linkStudentToConversation(input:{conversationId:string;pageId:string;studentId?:string;newStudentName?:string;importLegacyContext?:boolean}) {
+  return requestJson<{identity:StudentIdentity;students:StudentOption[]}>(`/api/conversations/${encodeURIComponent(input.conversationId)}/student-link`,{
+    method:'POST',body:JSON.stringify(input)});
+}
+
+export type ConversationMessageStudentLink={messageId:string;studentId:string;studentName:string};
+export async function getConversationMessageStudents(conversationId:string,pageId:string,signal?:AbortSignal) {
+  const query=new URLSearchParams({pageId});
+  return requestJson<{items:ConversationMessageStudentLink[]}>(`/api/conversations/${encodeURIComponent(conversationId)}/student-messages?${query}`,{signal});
+}
+export async function linkConversationMessages(input:{conversationId:string;pageId:string;studentId:string;messageIds:string[];reassign?:boolean}) {
+  return requestJson<ConversationMessageStudentLink[]>(`/api/conversations/${encodeURIComponent(input.conversationId)}/student-messages/link`,{
+    method:'POST',body:JSON.stringify(input)});
+}
+
+export async function getStudentSummary(studentId:string,signal?:AbortSignal) {
+  return requestJson<StudentSummary>(`/api/students/${encodeURIComponent(studentId)}/summary`,{signal});
+}
+
+export async function createStudentFact(input:{studentId:string;kind:StudentFact['kind'];content:string;useInSuggestions:boolean;expiresAt?:string;
+  sourceText?:string;sourceMessageId?:string;sourceConversationId?:string}) {
+  return requestJson<{items:StudentFact[]}>(`/api/students/${encodeURIComponent(input.studentId)}/facts`,{
+    method:'POST',body:JSON.stringify(input)});
+}
+
+export async function updateStudentFact(input:{studentId:string;factId:string;content?:string;status?:'active'|'archived';expiresAt?:string|null;useInSuggestions?:boolean}) {
+  return requestJson<{items:StudentFact[]}>(`/api/students/${encodeURIComponent(input.studentId)}/facts/${encodeURIComponent(input.factId)}`,{
+    method:'PATCH',body:JSON.stringify(input)});
+}
+
+export async function createStudentAssignment(input:{studentId:string;title:string;startedAt?:string;startedSource?:string}) {
+  return requestJson<{items:StudentSummary['assignments']}>(`/api/students/${encodeURIComponent(input.studentId)}/assignments`,{
+    method:'POST',body:JSON.stringify(input)});
+}
+
+export async function updateStudentAssignment(input:{studentId:string;assignmentId:string;revision:number;status:'active'|'completed'|'unknown';completionEvidence?:string}) {
+  return requestJson<{items:StudentSummary['assignments']}>(`/api/students/${encodeURIComponent(input.studentId)}/assignments/${encodeURIComponent(input.assignmentId)}`,{
+    method:'PATCH',body:JSON.stringify(input)});
+}
+
+export async function createIssueOccurrence(input:{studentId:string;title?:string;issueId?:string;summary?:string;assignmentId?:string;
+  reviewSessionId?:string;occurredAt:string;sourceKind:'teacher_confirmed'|'student_reported'|'staff_confirmed';conversationId?:string;
+  messageId?:string;speaker:string;verbatimText:string;practiceAction?:string}) {
+  return requestJson<{issues:StudentIssue[]}>(`/api/students/${encodeURIComponent(input.studentId)}/issues/occurrences`,{
+    method:'POST',body:JSON.stringify(input)});
+}
+
+export async function getStudentIssueDetail(studentId:string,issueId:string) {
+  return requestJson<IssueDetail>(`/api/students/${encodeURIComponent(studentId)}/issues/${encodeURIComponent(issueId)}`);
+}
+
+export async function updateStudentOccurrence(input:{studentId:string;issueId:string;occurrenceId:string;revision:number;approved?:boolean;
+  targetIssueId?:string;targetIssueTitle?:string;occurredAt?:string;sourceKind?:'teacher_confirmed'|'student_reported'|'staff_confirmed';
+  evidenceText?:string;evidenceConversationId?:string;evidenceMessageId?:string;speaker?:string}) {
+  return requestJson<IssueDetail>(`/api/students/${encodeURIComponent(input.studentId)}/issues/${encodeURIComponent(input.issueId)}/occurrences/${encodeURIComponent(input.occurrenceId)}`,
+    {method:'PATCH',body:JSON.stringify(input)});
+}
+
+export async function updateStudentIssue(input:{studentId:string;issueId:string;revision:number;status:'active'|'needs_verification'|'resolved'|'recurred';statusEvidence:string}) {
+  return requestJson<{items:StudentIssue[]}>(`/api/students/${encodeURIComponent(input.studentId)}/issues/${encodeURIComponent(input.issueId)}`,{
+    method:'PATCH',body:JSON.stringify(input)});
+}
+
+export async function getStudentIssues(studentId:string,offset=0,limit=100) {
+  return requestJson<{items:StudentIssue[];limit:number;offset:number}>(
+    `/api/students/${encodeURIComponent(studentId)}/issues?view=all&limit=${limit}&offset=${offset}`);
+}
+
+export async function recordStudentSubmission(input:{studentId:string;conversationId:string;messageId:string;assignmentId?:string;assignmentTitle?:string}) {
+  return requestJson<{items:StudentSummary['submissions']}>(`/api/students/${encodeURIComponent(input.studentId)}/submissions`,{
+    method:'POST',body:JSON.stringify(input)});
+}
+
+export async function syncConversationHistory(input:{conversationId:string;pageId:string;pages?:number}) {
+  return requestJson<{syncedMessages:number;complete:boolean;stopped:boolean;coverage:StudentSummary['historyCoverage']}>(
+    `/api/conversations/${encodeURIComponent(input.conversationId)}/history/sync`,{
+      method:'POST',body:JSON.stringify({pageId:input.pageId,pages:input.pages||1,limit:50})});
+}
+
+export async function extractStudentProposals(input:{studentId:string;conversationId:string}) {
+  return requestJson<{items:StudentProposal[];createdCount:number;sourceMessageCount:number;hasMore:boolean}>(
+    `/api/students/${encodeURIComponent(input.studentId)}/proposals/extract`,{method:'POST',body:JSON.stringify({conversationId:input.conversationId})});
+}
+
+export async function listStudentProposals(studentId:string) {
+  return requestJson<{items:StudentProposal[]}>(`/api/students/${encodeURIComponent(studentId)}/proposals?status=pending`);
+}
+
+export async function decideStudentProposal(input:{studentId:string;proposalId:string;action:'accept'|'reject';content?:string}) {
+  return requestJson<{items:StudentProposal[]}>(`/api/students/${encodeURIComponent(input.studentId)}/proposals/${encodeURIComponent(input.proposalId)}/decision`,{
+    method:'POST',body:JSON.stringify(input)});
+}
+
+export async function confirmReviewSession(input:{studentId:string;reviewSessionId:string;confirmed:boolean;evidence?:string}) {
+  return requestJson<{items:Array<{id:string;status:string;confirmedAt?:string}>}>(
+    `/api/students/${encodeURIComponent(input.studentId)}/review-sessions/${encodeURIComponent(input.reviewSessionId)}/confirmation`,{
+      method:'PATCH',body:JSON.stringify(input)});
 }
 
 export async function getStudentContext(input: {

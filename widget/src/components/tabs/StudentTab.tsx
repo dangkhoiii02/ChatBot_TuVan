@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { PronounPair, StudentProfile } from '../../types';
+import type { ApiChatMessage, StudentIdentityApi, StudentOptionApi, StudentSummaryApi } from '../../lib/api';
 import { PronounBar } from '../PronounBar';
+import { StudentLearningTab } from './StudentLearningTab';
 
 interface Props {
   student: StudentProfile;
@@ -12,6 +14,14 @@ interface Props {
   onSaveNotes: (value: string) => Promise<void>;
   onAddMemory: (value: string) => Promise<void>;
   onCustomFieldChange: (id: string, value: string) => Promise<void>;
+  identity: StudentIdentityApi | null;
+  students: StudentOptionApi[];
+  summary: StudentSummaryApi | null;
+  conversationId: string;
+  messages: ApiChatMessage[];
+  onLink: (input: { studentId?: string; newStudentName?: string; importLegacyContext?: boolean }) => Promise<void>;
+  onRefresh: () => Promise<unknown>;
+  onSyncHistory: () => Promise<unknown>;
 }
 
 export function StudentTab({
@@ -24,6 +34,14 @@ export function StudentTab({
   onSaveNotes,
   onAddMemory,
   onCustomFieldChange,
+  identity,
+  students,
+  summary,
+  conversationId,
+  messages,
+  onLink,
+  onRefresh,
+  onSyncHistory,
 }: Props) {
   const [notesDraft, setNotesDraft] = useState(notes);
   const [saving, setSaving] = useState(false);
@@ -45,6 +63,10 @@ export function StudentTab({
 
   return (
     <div className="tab-panel student-tab">
+      <StudentLearningTab identity={identity} students={students} summary={summary} conversationId={conversationId} messages={messages}
+        onLink={onLink} onRefresh={onRefresh} onSyncHistory={onSyncHistory} />
+
+      {identity?.status === 'linked' && <>
       <div className="field-block">
         <div className="field-label">Đại từ xưng hô</div>
         <PronounBar value={pronouns} onChange={onPronounsChange} />
@@ -105,6 +127,7 @@ export function StudentTab({
         </div>
       )}
       {error && <div className="inline-error" role="alert">{error}</div>}
+      </>}
     </div>
   );
 }

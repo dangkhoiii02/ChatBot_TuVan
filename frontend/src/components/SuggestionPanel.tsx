@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { Conversation, Suggestion, PronounPair, CustomField, ProfileField, MemoryItem } from '../types';
+import React, { useRef, useState } from 'react';
+import { Conversation, Suggestion, PronounPair, CustomField, ProfileField, MemoryItem, StudentIdentity, StudentOption, StudentSummary } from '../types';
+import { StudentLearningCard } from './StudentLearningCard';
 
 export interface SuggestionPanelProps {
   conversation?: Conversation;
@@ -9,7 +10,7 @@ export interface SuggestionPanelProps {
   onUseSuggestion: (content: string) => void;
   currentPronoun: PronounPair;
   onChangePronouns: (pair: PronounPair) => void;
-  onGradeAssignment: (reviewText: string) => Promise<void> | void;
+  onGradeAssignment: (reviewText: string, assignmentId?:string, assignmentTitle?:string, reviewSessionKey?:string) => Promise<string|void> | string | void;
   onAddCustomField: (field: Omit<CustomField, 'id' | 'source'>) => Promise<void> | void;
   onUpdateCustomField?: (id: string, changes: { value?: string; useInSuggestions?: boolean; hidden?: boolean }) => Promise<void> | void;
   onDeleteCustomField?: (id: string) => Promise<void> | void;
@@ -23,6 +24,14 @@ export interface SuggestionPanelProps {
   aiMode?: 'system' | 'user_override';
   isContextLoading?: boolean;
   isSavingContext?: boolean;
+  studentIdentity?: StudentIdentity | null;
+  studentOptions?: StudentOption[];
+  studentSummary?: StudentSummary | null;
+  onLinkStudent?: (input:{studentId?:string;newStudentName?:string;importLegacyContext?:boolean})=>Promise<void>;
+  onRefreshStudentSummary?: ()=>Promise<unknown>;
+  onConfirmReviewSession?: (reviewSessionId:string)=>Promise<void>;
+  onSyncConversationHistory?: ()=>Promise<unknown>;
+  onOpenEvidence?:(conversationId:string,messageId?:string)=>void;
   onOpenAiSettings?: () => void;
 }
 
@@ -58,11 +67,24 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
   aiMode = 'system',
   isContextLoading,
   isSavingContext,
+  studentIdentity,
+  studentOptions=[] ,
+  studentSummary,
+  onLinkStudent,
+  onRefreshStudentSummary,
+  onConfirmReviewSession,
+  onSyncConversationHistory,
+  onOpenEvidence,
   onOpenAiSettings
 }) => {
   const [activeTab, setActiveTab] = useState<AssistantTab>('suggestions');
   const [isPronounMenuOpen, setIsPronounMenuOpen] = useState(false);
   const [gradingInput, setGradingInput] = useState('');
+  const [assignmentTitle,setAssignmentTitle]=useState('');
+  const [assignmentId,setAssignmentId]=useState('');
+  const [reviewSessionId,setReviewSessionId]=useState<string|null>(null);
+  const [reviewConfirmed,setReviewConfirmed]=useState(false);
+  const reviewKeyRef=useRef<{conversation:string;input:string;assignment:string;key:string}|null>(null);
   const [isGradingLoading, setIsGradingLoading] = useState(false);
   const [gradingError, setGradingError] = useState('');
   const [formError, setFormError] = useState('');
@@ -158,15 +180,29 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
 
   const handleGenerateGrading = async () => {
     if (!gradingInput.trim()) return;
+    let request=reviewKeyRef.current;
+    const assignmentSelection=assignmentId||`new:${assignmentTitle.trim()}`;
+    if(!request||request.conversation!==conversation.id||request.input!==gradingInput.trim()||request.assignment!==assignmentSelection) {
+      request={conversation:conversation.id,input:gradingInput.trim(),assignment:assignmentSelection,key:crypto.randomUUID()};
+      reviewKeyRef.current=request;
+    }
     setIsGradingLoading(true);
     setGradingError('');
     try {
-      await onGradeAssignment(gradingInput);
+      const sessionId=await onGradeAssignment(gradingInput,assignmentId||undefined,assignmentId?undefined:assignmentTitle.trim()||undefined,request.key);
+      if(sessionId) {setReviewSessionId(sessionId);setReviewConfirmed(false);}
     } catch (error) {
       setGradingError(error instanceof Error ? error.message : 'Không tạo được nhận xét.');
     } finally {
       setIsGradingLoading(false);
     }
+  };
+
+  const handleConfirmReview=async()=>{
+    if(!reviewSessionId||!onConfirmReviewSession)return;
+    setGradingError('');
+    try {await onConfirmReviewSession(reviewSessionId);setReviewConfirmed(true);}
+    catch(error){setGradingError(error instanceof Error?error.message:'Không xác nhận được lượt trả bài.');}
   };
 
   const handleAddMemorySubmit = async (e: React.FormEvent) => {
@@ -464,6 +500,18 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
         {/* TAB 2: HỒ SƠ */}
         {activeTab === 'profile' && (
           <div className="tab-pane pane-profile">
+            <StudentLearningCard
+              identity={studentIdentity||null}
+              students={studentOptions}
+              summary={studentSummary||null}
+              conversationId={conversation.id}
+              messages={conversation.messages}
+              onLink={onLinkStudent|| (async()=>{})}
+              onOpenEvidence={onOpenEvidence}
+              onRefresh={onRefreshStudentSummary|| (async()=>null)}
+              onSyncHistory={onSyncConversationHistory|| (async()=>null)}
+            />
+            {studentIdentity?.status==='linked' ? <>
             <div className="profile-section-header">
               <span className="section-title">Thông tin cơ bản học viên</span>
               <span className="section-hint">Tự động đồng bộ từ lịch sử chat</span>
@@ -626,6 +674,7 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
                 </div>
               )}
             </div>
+            </> : <div className="empty-tab-note">Hãy chọn hoặc tạo hồ sơ học viên trước khi sửa ghi chú cũ.</div>}
           </div>
         )}
         {/* TAB 3: CHẤM BÀI */}
@@ -640,6 +689,19 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
             </div>
 
             <div className="grading-input-container">
+              {studentIdentity?.status!=='linked'&&<div className="learning-warning">Chưa chọn học viên; AI chỉ dùng nhận xét bạn nhập và nội dung hội thoại hiện tại.</div>}
+              {studentIdentity?.status==='linked'&&<>
+                <label className="grading-label">Bài đang tập (tuỳ chọn):</label>
+                <select className="grading-assignment-input" value={assignmentId} onChange={(event)=>setAssignmentId(event.target.value)}>
+                  <option value="">Bài mới hoặc chưa chọn</option>
+                  {studentSummary?.assignments.filter((assignment)=>assignment.status==='active').map((assignment)=><option key={assignment.id} value={assignment.id}>{assignment.title} · {assignment.id.slice(-8)}</option>)}
+                </select>
+                {!assignmentId&&<input className="grading-assignment-input" value={assignmentTitle} onChange={(event)=>setAssignmentTitle(event.target.value)} placeholder="Tên bài mới (để trống nếu chưa rõ)" />}
+                {(studentSummary?.unresolvedIssues.length||0)>0&&<div className="grading-history-reference"><b>Tham khảo lần trước — không tự tính là lỗi hiện tại</b>
+                  {studentSummary?.unresolvedIssues.slice(0,5).map((issue)=><span key={issue.id}>{issue.title}: {issue.latestPracticeAction||'chưa có cách sửa đã lưu'}</span>)}
+                  <small>Chỉ nội dung ở ô nhận xét giáo viên bên dưới được xem là lỗi của bài hiện tại.</small>
+                </div>}
+              </>}
               <label className="grading-label">Ghi chú nhận xét của giáo viên:</label>
               <textarea
                 className="grading-textarea"
@@ -662,6 +724,9 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
                   '⚡ AI soạn 3 phương án nhận xét'
                 )}
               </button>
+              {reviewSessionId&&!reviewConfirmed&&<div className="review-confirm-row"><small>Sau khi gửi nhận xét qua Pancake, xác nhận để tính đây là một lượt trả bài.</small>
+                <button type="button" className="btn-secondary" disabled={isGradingLoading} onClick={()=>void handleConfirmReview()}>Đã gửi nhận xét</button></div>}
+              {reviewConfirmed&&<div className="review-confirmed-note">✓ Lượt trả bài đã được xác nhận.</div>}
               {gradingError && <div className="inline-form-error" role="alert">{gradingError}</div>}
             </div>
 

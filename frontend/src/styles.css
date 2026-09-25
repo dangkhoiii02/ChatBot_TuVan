@@ -4082,3 +4082,118 @@ html, body {
     transition-duration: 0.01ms !important;
   }
 }
+
+.student-learning-card {
+  margin: 10px 0 18px;
+  padding: 14px;
+  border: 1px solid #dbe3ee;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #182230;
+  display: grid;
+  gap: 12px;
+  font-size: 13px;
+}
+.learning-card-heading,.learning-list-heading,.learning-identity-switch,.learning-actions-row,
+.learning-inline-form,.learning-fact,.learning-issue,.review-confirm-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.learning-card-heading small,.learning-section small,.learning-issue small,.learning-fact small,
+.learning-warning,.learning-evidence-detail blockquote span,.learning-evidence-detail blockquote small,
+.learning-proposals article small {
+  display: block;
+  color: #64748b;
+  margin-top: 3px;
+  line-height: 1.45;
+}
+.learning-identity-badge,.proposal-kind {
+  border-radius: 999px;
+  background: #e0e7ff;
+  color: #3730a3;
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.learning-link-form,.learning-section,.learning-evidence-detail,.learning-proposals {
+  display: grid;
+  gap: 9px;
+  padding-top: 10px;
+  border-top: 1px solid #e2e8f0;
+}
+.learning-message-identity { display: grid; gap: 8px; border-top: 1px solid #e2e8f0; padding-top: 9px; }
+.learning-message-identity summary { cursor: pointer; color: #1d4ed8; font-weight: 600; }
+.learning-message-map { display: grid; grid-template-columns: minmax(0,1fr) minmax(110px,150px) auto; align-items: center; gap: 8px; padding: 7px; border-radius: 7px; background: #fff; font-size: 11px; }
+.learning-message-map span { min-width: 0; overflow-wrap: anywhere; }
+.learning-message-map small { display: block; color: #64748b; margin-top: 3px; }
+.learning-message-map select,.learning-message-map button { min-width: 0; border: 1px solid #cbd5e1; border-radius: 7px; background: #fff; padding: 6px; font: inherit; }
+.learning-link-form label,.learning-section label { display: grid; gap: 5px; }
+.learning-link-form input,.learning-link-form select,.learning-section input,.learning-section select,
+.learning-section textarea,.grading-assignment-input {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #fff;
+  color: #182230;
+  padding: 8px;
+  font: inherit;
+}
+.learning-inline-form { align-items: stretch; flex-wrap: wrap; }
+.learning-inline-form > * { flex: 1 1 130px; }
+.learning-inline-form button,.learning-actions-row button,.learning-resolve,.learning-identity-switch button,
+.learning-fact button,.learning-list-heading button,.learning-proposals button {
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  color: #334155;
+  background: white;
+  padding: 7px 9px;
+  font: inherit;
+  cursor: pointer;
+}
+.learning-check { display: flex !important; align-items: center; gap: 6px !important; }
+.learning-check input { width: auto; }
+.learning-coverage { display: flex; flex-wrap: wrap; gap: 6px; color: #475569; font-size: 11px; }
+.learning-coverage span { border-radius: 6px; padding: 4px 6px; background: #e2e8f0; }
+.learning-warning { color: #92400e; background: #fffbeb; border-radius: 6px; padding: 8px; }
+.learning-fact,.learning-assignment,.learning-issue { padding: 8px 0; border-bottom: 1px solid #e2e8f0; }
+.learning-fact > span { flex: 1; }
+.learning-assignment { display: grid; gap: 2px; }
+.learning-assignment span { color: #475569; }
+.learning-assignment em { color: #92400e; font-style: normal; }
+.learning-list-heading > div { display: flex; gap: 4px; }
+.learning-list-heading button { padding: 5px 7px; font-size: 11px; }
+.learning-list-heading button.selected { background: #dbeafe; color: #1d4ed8; border-color: #93c5fd; }
+.learning-issue { align-items: flex-start; }
+.learning-issue-open { flex: 1; text-align: left; border: 0; padding: 0; background: transparent; color: inherit; cursor: pointer; }
+.learning-issue-open b,.learning-issue-open span,.learning-issue-open small { display: block; margin-bottom: 3px; }
+.learning-resolve { color: #166534; font-size: 11px; white-space: nowrap; }
+.learning-evidence-detail { background: white; border: 1px solid #dbe3ee; border-radius: 8px; padding: 10px; }
+.learning-evidence-detail blockquote { margin: 0; border-left: 3px solid #93c5fd; padding: 6px 9px; background: #f8fafc; }
+.learning-occurrence { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 7px 0; border-bottom: 1px solid #e2e8f0; font-size: 11px; }
+.learning-occurrence span { flex: 1 1 100%; color: #475569; }
+.learning-occurrence button { border: 1px solid #cbd5e1; border-radius: 6px; padding: 5px 7px; background: white; font: inherit; cursor: pointer; }
+.learning-evidence-detail p { margin: 5px 0; white-space: pre-wrap; }
+.learning-source-link { margin-top: 5px; border: 0; padding: 0; background: transparent; color: #1d4ed8; font: inherit; font-size: 11px; text-decoration: underline; cursor: pointer; }
+.chat-messages-area [id^='message-'] { scroll-margin: 18px; }
+.learning-add-occurrence summary { cursor: pointer; color: #1d4ed8; font-weight: 600; }
+.learning-add-occurrence textarea { min-height: 60px; }
+.learning-add-evidence { display: grid; gap: 6px; padding: 8px; background: #f8fafc; border-radius: 7px; font-size: 11px; }
+.learning-add-evidence select,.learning-add-evidence textarea { min-width: 0; width: 100%; padding: 7px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; font: inherit; }
+.learning-proposals article { display: grid; gap: 5px; padding: 9px; background: white; border: 1px solid #e2e8f0; border-radius: 8px; }
+.learning-proposals article > div { display: flex; gap: 6px; }
+.learning-error { color: #b91c1c; background: #fef2f2; border-radius: 7px; padding: 8px; }
+.grading-history-reference { display: grid; gap: 4px; margin: 8px 0; padding: 9px; border-left: 3px solid #f59e0b; background: #fffbeb; color: #78350f; font-size: 12px; }
+.grading-history-reference small { color: #92400e; }
+.review-confirm-row { align-items: flex-start; margin-top: 9px; }
+.review-confirm-row small { color: #64748b; line-height: 1.4; }
+.review-confirmed-note { margin-top: 8px; color: #166534; }
+
+@media (max-width: 640px) {
+  .student-learning-card { padding: 10px; }
+  .learning-card-heading,.learning-list-heading { align-items: flex-start; flex-direction: column; }
+  .learning-issue { flex-direction: column; }
+  .learning-actions-row { align-items: stretch; flex-direction: column; }
+}

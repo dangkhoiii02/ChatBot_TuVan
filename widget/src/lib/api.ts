@@ -41,8 +41,32 @@ export type SuggestionApiResult = {
   analysis?: string;
   intent?: string;
   sensitivity?: string;
+  identityStatus?: 'linked' | 'needs_selection';
+  contextVersion?: string | null;
+  reviewSessionId?: string | null;
+  usedFacts?: Array<{id:string;kind:string;content:string;sourceMessageId?:string;sourceText?:string}>;
+  historyCoverage?: {status:string;oldestMessageAt?:string|null;lastSyncedAt?:string|null};
   suggestions: Array<{ id: string; tone: string; content: string }>;
 };
+
+export type StudentOptionApi={id:string;name:string;revision?:number;updatedAt?:string};
+export type StudentIdentityApi={pageId:string;conversationId:string;customerId?:string|null;customerName:string;status:'linked'|'needs_selection';
+  student:StudentOptionApi|null;relatedStudents:StudentOptionApi[];legacyContextAvailable:boolean;legacyContextKeys:string[]};
+export type StudentIssueApi={id:string;title:string;summary:string;status:'active'|'needs_verification'|'resolved'|'recurred';
+  firstOccurredAt?:string|null;lastOccurredAt?:string|null;revision:number;occurrenceCount:number;reviewSessionCount:number;
+  messageMentionCount:number;latestSourceKind?:'teacher_confirmed'|'student_reported'|'staff_confirmed'|null;latestPracticeAction?:string|null;latestPracticeAt?:string|null};
+export type StudentFactApi={id:string;kind:'preference'|'event'|'learning_note';content:string;sourceText?:string|null;sourceMessageId?:string|null;
+  occurredAt?:string|null;expiresAt?:string|null;status?:'active'|'archived';useInSuggestions:number|boolean;createdAt:string};
+export type StudentSummaryApi={pageId:string;studentId:string;studentName:string;revision:number;facts:StudentFactApi[];
+  expiredFacts:StudentFactApi[];
+  assignments:Array<{id:string;title:string;status:string;startedAt?:string|null;durationLabel:string;reviewSessionCount:number;
+    revision:number;pendingSubmissionCount:number;lastReviewedAt?:string|null}>;submissions:Array<{id:string;sourceMessageId:string;submittedAt:string;status:string;assignmentTitle?:string|null}>;
+  issues:StudentIssueApi[];unresolvedIssues:StudentIssueApi[];historyCoverage:{status:'unknown'|'partial'|'complete';lastSyncedAt?:string|null;
+    oldestMessageAt?:string|null;linkedConversationCount:number;syncedConversationCount:number;errors:string[]}};
+export type StudentProposalApi={id:string;kind:string;payload:Record<string,unknown>;sourceMessageId?:string|null;sourceText?:string|null;confidence?:number|null};
+export type StudentIssueDetailApi={issue:StudentIssueApi;occurrences:Array<{id:string;occurredAt:string;sourceKind:string;revision:number;approved:number}>;
+  evidence:Array<{id:string;speaker:string;verbatimText:string;occurredAt:string;conversationId?:string|null;messageId?:string|null}>;
+  practiceActions:Array<{id:string;content:string;createdAt:string}>};
 
 export type StudentContextApi = {
   pageId: string;
@@ -155,6 +179,8 @@ function normalizeText(value: string) {
 
 export async function createSuggestions(input: {
   conversationId: string;
+  studentId?:string;
+  contextRevision?:number;
   messages: Array<{
     id: string;
     conversationId?: string;
@@ -176,13 +202,23 @@ export async function createTeacherReview(input: {
   teacherInput: string;
   pronouns: { speaker: string; listener: string };
   messages: ApiChatMessage[];
+  studentId?:string;
+  contextRevision?:number;
+  assignmentId?:string;
+  assignmentTitle?:string;
+  reviewSessionKey?:string;
 }) {
   return requestJson<SuggestionApiResult>('/api/suggestions', {
     method: 'POST',
     body: JSON.stringify({
       conversationId: input.conversationId,
+      studentId:input.studentId,
+      contextRevision:input.contextRevision,
       mode: 'teacher_review',
       teacherInput: input.teacherInput,
+      assignmentId:input.assignmentId,
+      assignmentTitle:input.assignmentTitle,
+      reviewSessionKey:input.reviewSessionKey,
       pronouns: {
         senderCall: input.pronouns.speaker,
         recipientCall: input.pronouns.listener,
@@ -191,6 +227,104 @@ export async function createTeacherReview(input: {
       messages: input.messages
     })
   });
+}
+
+export async function getConversationStudentLink(conversationId:string,pageId:string,signal?:AbortSignal) {
+  const query=new URLSearchParams({pageId});
+  return requestJson<{identity:StudentIdentityApi;students:StudentOptionApi[]}>(
+    `/api/conversations/${encodeURIComponent(conversationId)}/student-link?${query.toString()}`,{signal});
+}
+
+export async function linkStudentToConversation(input:{conversationId:string;pageId:string;studentId?:string;newStudentName?:string;importLegacyContext?:boolean}) {
+  return requestJson<{identity:StudentIdentityApi;students:StudentOptionApi[]}>(`/api/conversations/${encodeURIComponent(input.conversationId)}/student-link`,{
+    method:'POST',body:JSON.stringify(input)});
+}
+
+export type ConversationMessageStudentLinkApi={messageId:string;studentId:string;studentName:string};
+export async function getConversationMessageStudents(conversationId:string,pageId:string,signal?:AbortSignal) {
+  const query=new URLSearchParams({pageId});
+  return requestJson<{items:ConversationMessageStudentLinkApi[]}>(`/api/conversations/${encodeURIComponent(conversationId)}/student-messages?${query}`,{signal});
+}
+export async function linkConversationMessages(input:{conversationId:string;pageId:string;studentId:string;messageIds:string[];reassign?:boolean}) {
+  return requestJson<ConversationMessageStudentLinkApi[]>(`/api/conversations/${encodeURIComponent(input.conversationId)}/student-messages/link`,{
+    method:'POST',body:JSON.stringify(input)});
+}
+
+export async function getStudentSummary(studentId:string,signal?:AbortSignal) {
+  return requestJson<StudentSummaryApi>(`/api/students/${encodeURIComponent(studentId)}/summary`,{signal});
+}
+
+export async function createStudentFact(input:{studentId:string;kind:StudentFactApi['kind'];content:string;useInSuggestions:boolean;expiresAt?:string;
+  sourceText?:string;sourceMessageId?:string;sourceConversationId?:string}) {
+  return requestJson<{items:StudentFactApi[]}>(`/api/students/${encodeURIComponent(input.studentId)}/facts`,{method:'POST',body:JSON.stringify(input)});
+}
+
+export async function updateStudentFact(input:{studentId:string;factId:string;status?:'active'|'archived';content?:string;expiresAt?:string|null;useInSuggestions?:boolean}) {
+  return requestJson<{items:StudentFactApi[]}>(`/api/students/${encodeURIComponent(input.studentId)}/facts/${encodeURIComponent(input.factId)}`,
+    {method:'PATCH',body:JSON.stringify(input)});
+}
+
+export async function createStudentAssignment(input:{studentId:string;title:string;startedAt?:string;startedSource?:string}) {
+  return requestJson<{items:StudentSummaryApi['assignments']}>(`/api/students/${encodeURIComponent(input.studentId)}/assignments`,{method:'POST',body:JSON.stringify(input)});
+}
+
+export async function updateStudentAssignment(input:{studentId:string;assignmentId:string;revision:number;status:'active'|'completed'|'unknown';completionEvidence?:string}) {
+  return requestJson<{items:StudentSummaryApi['assignments']}>(`/api/students/${encodeURIComponent(input.studentId)}/assignments/${encodeURIComponent(input.assignmentId)}`,
+    {method:'PATCH',body:JSON.stringify(input)});
+}
+
+export async function createIssueOccurrence(input:{studentId:string;title:string;summary?:string;occurredAt:string;sourceKind:'teacher_confirmed'|'student_reported'|'staff_confirmed';
+  conversationId?:string;messageId?:string;speaker:string;verbatimText:string;practiceAction?:string}) {
+  return requestJson<{issues:StudentIssueApi[]}>(`/api/students/${encodeURIComponent(input.studentId)}/issues/occurrences`,{method:'POST',body:JSON.stringify(input)});
+}
+
+export async function getStudentIssueDetail(studentId:string,issueId:string) {
+  return requestJson<StudentIssueDetailApi>(`/api/students/${encodeURIComponent(studentId)}/issues/${encodeURIComponent(issueId)}`);
+}
+
+export async function updateStudentOccurrence(input:{studentId:string;issueId:string;occurrenceId:string;revision:number;approved?:boolean;
+  targetIssueId?:string;targetIssueTitle?:string;occurredAt?:string;sourceKind?:'teacher_confirmed'|'student_reported'|'staff_confirmed';
+  evidenceText?:string;evidenceConversationId?:string;evidenceMessageId?:string;speaker?:string}) {
+  return requestJson<StudentIssueDetailApi>(`/api/students/${encodeURIComponent(input.studentId)}/issues/${encodeURIComponent(input.issueId)}/occurrences/${encodeURIComponent(input.occurrenceId)}`,
+    {method:'PATCH',body:JSON.stringify(input)});
+}
+
+export async function updateStudentIssue(input:{studentId:string;issueId:string;revision:number;status:'active'|'needs_verification'|'resolved'|'recurred';statusEvidence:string}) {
+  return requestJson<{items:StudentIssueApi[]}>(`/api/students/${encodeURIComponent(input.studentId)}/issues/${encodeURIComponent(input.issueId)}`,
+    {method:'PATCH',body:JSON.stringify(input)});
+}
+
+export async function getStudentIssues(studentId:string,offset=0,limit=100) {
+  return requestJson<{items:StudentIssueApi[];limit:number;offset:number}>(
+    `/api/students/${encodeURIComponent(studentId)}/issues?view=all&limit=${limit}&offset=${offset}`);
+}
+
+export async function recordStudentSubmission(input:{studentId:string;conversationId:string;messageId:string;assignmentTitle?:string}) {
+  return requestJson<{items:StudentSummaryApi['submissions']}>(`/api/students/${encodeURIComponent(input.studentId)}/submissions`,{method:'POST',body:JSON.stringify(input)});
+}
+
+export async function listStudentProposals(studentId:string) {
+  return requestJson<{items:StudentProposalApi[]}>(`/api/students/${encodeURIComponent(studentId)}/proposals?status=pending`);
+}
+
+export async function extractStudentProposals(input:{studentId:string;conversationId:string}) {
+  return requestJson<{items:StudentProposalApi[];createdCount:number;sourceMessageCount:number;hasMore:boolean}>(
+    `/api/students/${encodeURIComponent(input.studentId)}/proposals/extract`,{method:'POST',body:JSON.stringify({conversationId:input.conversationId})});
+}
+
+export async function decideStudentProposal(input:{studentId:string;proposalId:string;action:'accept'|'reject'}) {
+  return requestJson<{items:StudentProposalApi[]}>(`/api/students/${encodeURIComponent(input.studentId)}/proposals/${encodeURIComponent(input.proposalId)}/decision`,
+    {method:'POST',body:JSON.stringify(input)});
+}
+
+export async function syncConversationHistory(input:{conversationId:string;pageId:string;pages?:number}) {
+  return requestJson<{syncedMessages:number;complete:boolean;stopped:boolean;coverage:StudentSummaryApi['historyCoverage']}>(
+    `/api/conversations/${encodeURIComponent(input.conversationId)}/history/sync`,{method:'POST',body:JSON.stringify({pageId:input.pageId,pages:input.pages||1,limit:50})});
+}
+
+export async function confirmReviewSession(input:{studentId:string;reviewSessionId:string;confirmed:boolean;evidence?:string}) {
+  return requestJson<{items:Array<{id:string;status:string}>}>(`/api/students/${encodeURIComponent(input.studentId)}/review-sessions/${encodeURIComponent(input.reviewSessionId)}/confirmation`,
+    {method:'PATCH',body:JSON.stringify(input)});
 }
 
 export async function getStudentContext(input: {

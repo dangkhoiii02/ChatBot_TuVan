@@ -740,6 +740,56 @@ textarea {
   font-weight: 700;
 }
 
+.student-learning-tab { padding-bottom: 8px; }
+.learning-card, .grading-history-reference, .review-session-confirmation {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.learning-card h3 { margin: 0; font-size: 13px; }
+.learning-card p, .grading-history-reference p { margin: 4px 0; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.learning-card label, .learning-form { display: flex; flex-direction: column; gap: 6px; font-size: 11px; color: #475569; }
+.learning-form { padding-top: 8px; border-top: 1px solid var(--border); }
+.learning-form input, .learning-form select, .learning-form textarea, .learning-card select, .learning-card input:not([type='checkbox']), .text-input {
+  width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 7px; padding: 7px 8px;
+  font: inherit; font-size: 11px; color: var(--text); background: #fff;
+}
+.learning-form textarea { min-height: 60px; resize: vertical; }
+.learning-check { display: flex !important; flex-direction: row !important; align-items: center; gap: 6px !important; }
+.learning-heading, .learning-row, .learning-issue { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; min-width: 0; }
+.learning-heading { align-items: center; }
+.learning-heading details { font-size: 11px; }
+.learning-coverage, .learning-warning, .learning-card small, .grading-history-reference small, .review-session-confirmation small { color: var(--muted); font-size: 10px; line-height: 1.4; }
+.learning-warning { color: #92400e !important; }
+.learning-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.learning-row, .learning-assignment, .learning-issue, .learning-proposal { padding: 8px 0; border-top: 1px solid #f1f5f9; font-size: 11px; }
+.learning-row > span, .learning-issue-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; overflow-wrap: anywhere; }
+.learning-row small, .learning-assignment span, .learning-assignment em, .learning-issue small { display: block; }
+.learning-assignment em { color: #92400e; font-style: normal; }
+.learning-issue-main { appearance: none; padding: 0; border: 0; background: none; text-align: left; color: inherit; cursor: pointer; }
+.learning-filters { display: flex; gap: 3px; }
+.learning-filters button { border: 1px solid var(--border); border-radius: 999px; padding: 4px 6px; background: #fff; color: var(--muted); font: inherit; font-size: 9px; }
+.learning-filters button.active { border-color: var(--blue); color: var(--blue); background: var(--blue-soft); }
+.learning-detail blockquote { margin: 6px 0; padding: 7px; border-left: 2px solid #93c5fd; background: var(--bg); font-size: 11px; }
+.learning-occurrence { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 10px; }
+.learning-occurrence span { flex: 1 1 100%; color: var(--muted); }
+.learning-detail blockquote p { margin: 3px 0 0; }
+.learning-add-evidence { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 7px; background: var(--bg); font-size: 10px; }
+.learning-proposal > div { display: flex; gap: 6px; margin-top: 6px; }
+.learning-message-identity { display: flex; flex-direction: column; gap: 7px; padding-top: 8px; border-top: 1px solid var(--border); }
+.learning-message-identity summary { cursor: pointer; color: var(--blue); font-size: 11px; font-weight: 700; }
+.learning-message-map { display: grid; grid-template-columns: minmax(0,1fr) minmax(85px,110px) auto; gap: 5px; align-items: center; padding: 6px; border-radius: 7px; background: var(--bg); font-size: 10px; }
+.learning-message-map span { min-width: 0; overflow-wrap: anywhere; }
+.learning-message-map small { display: block; margin-top: 2px; color: var(--muted); }
+.learning-message-map select, .learning-message-map button { min-width: 0; border: 1px solid var(--border); border-radius: 6px; background: #fff; padding: 5px; font: inherit; }
+.grading-history-reference { background: #f8fafc; }
+.review-session-confirmation { background: #f0fdf4; border-color: #bbf7d0; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     scroll-behavior: auto !important;

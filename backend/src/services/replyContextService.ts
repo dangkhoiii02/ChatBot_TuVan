@@ -1,7 +1,5 @@
-import { config } from '../config.js';
 import type { ChatMessage } from '../types/api.js';
-import { pancakeClient, hasPancakePageAccess } from './pancakeClient.js';
-import { normalizeMessage } from './pancakeNormalizer.js';
+import { listCachedMessagesForStudent } from './studentIdentityService.js';
 
 type ContextMessage = Pick<ChatMessage, 'sender' | 'text' | 'createdAt'> &
   Partial<Pick<ChatMessage, 'id' | 'conversationId' | 'senderName'>> & {
@@ -11,6 +9,7 @@ type ContextMessage = Pick<ChatMessage, 'sender' | 'text' | 'createdAt'> &
 type ResolveReplyContextInput = {
   conversationId: string;
   pageId?: string;
+  studentId?: string;
   messages: ContextMessage[];
 };
 
@@ -23,21 +22,12 @@ type ResolveReplyContextInput = {
  */
 export async function resolveReplyContext(input: ResolveReplyContextInput): Promise<ContextMessage[]> {
   let messages = input.messages;
-
-  if (hasPancakePageAccess(input.pageId)) {
-    try {
-      const raw = await pancakeClient.listMessages({
-        pageId: input.pageId,
-        conversationId: input.conversationId,
-        limit: Math.max(config.pancake.messageLimit, 50)
-      });
-      const pancakeMessages = extractItems(raw).map((item) => normalizeMessage(item, input.conversationId));
-      if (pancakeMessages.length) messages = pancakeMessages;
-    } catch (error) {
-      // The client payload remains a safe operational fallback, but the same
-      // server-side selection rule is still applied below.
-      console.warn(`Could not refresh reply context from Pancake for ${input.conversationId}:`, error);
-    }
+  if (input.pageId) {
+    const rows=input.studentId?listCachedMessagesForStudent(input.pageId,input.conversationId,input.studentId,100):[];
+    if(rows.length) messages=rows.map((row)=>({
+      id:row.id,conversationId:row.conversationId,sender:row.sender as 'student'|'staff'|'system',senderName:row.senderName||undefined,text:row.text,
+      attachments:parseAttachments(row.attachmentsJson),createdAt:row.createdAt
+    }));
   }
 
   return selectLatestUnansweredTurn(messages);
@@ -74,12 +64,10 @@ export function selectLatestUnansweredTurn(messages: ContextMessage[]): ContextM
   return ordered.slice(Math.max(latestStaffIndex, 0), latestStudentIndex + 1);
 }
 
-function extractItems(raw: unknown): unknown[] {
-  if (Array.isArray(raw)) return raw;
-  if (!raw || typeof raw !== 'object') return [];
-  const record = raw as Record<string, unknown>;
-  const candidate = [record.messages, record.data, record.items].find(Array.isArray);
-  return candidate || [];
+function parseAttachments(raw:string|null) {
+  if(!raw) return [];
+  try { const value=JSON.parse(raw) as unknown; return Array.isArray(value)?value:[]; }
+  catch { return []; }
 }
 
 function getTime(value?: string) {

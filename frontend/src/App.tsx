@@ -21,7 +21,10 @@ import {
   CustomField,
   PancakePage,
   PronounPair,
-  AssignmentReviewOption
+  AssignmentReviewOption,
+  StudentIdentity,
+  StudentOption,
+  StudentSummary
 } from './types';
 import { ConversationSidebar } from './components/ConversationSidebar';
 import { ChatThread } from './components/ChatThread';
@@ -32,24 +35,35 @@ import {
   createTeacherReview,
   createStudentCustomField,
   createStudentMemory,
+  confirmReviewSession,
   deleteStudentCustomField,
   deleteStudentMemory,
   getConversationMessages,
+  getConversationStudentLink,
   getConversations,
   getHealth,
   getPages,
   getStudentContext,
+  getStudentSummary,
+  linkStudentToConversation,
   saveStudentProfile,
   logoutAppSession,
   updateStudentCustomField,
   updateStudentMemory,
   validateAIConnection,
+  syncConversationHistory,
   ApiError
 } from './services/api';
 import { getStaffUserId, setStaffUserId } from './lib/userId';
 import { adaptPronouns, cleanCorruptions } from './lib/pronounAdapter';
-import { clearAppSession, getSessionToken } from './lib/session';
+import { clearAppSession, getSessionToken, setAppSession } from './lib/session';
 import { LoginGate } from './components/LoginGate';
+
+// The fixture runner supplies a signed, fake staff session only to Vite dev.
+// Backend requests still pass through the normal session and page checks.
+if (import.meta.env.DEV && import.meta.env.VITE_TEST_SESSION_TOKEN?.trim()) {
+  setAppSession({ sessionToken: import.meta.env.VITE_TEST_SESSION_TOKEN.trim() });
+}
 
 const CONVERSATION_LIMIT = 30;
 const MESSAGE_LIMIT = 30;
@@ -67,7 +81,11 @@ export const App: React.FC = () => {
   const [isLoadingMessages, setIsLoadingMessages] = useState<boolean>(false);
   const [isLoadingContext, setIsLoadingContext] = useState<boolean>(false);
   const [isSavingContext, setIsSavingContext] = useState<boolean>(false);
+  const [studentIdentity, setStudentIdentity] = useState<StudentIdentity | null>(null);
+  const [studentOptions, setStudentOptions] = useState<StudentOption[]>([]);
+  const [studentSummary, setStudentSummary] = useState<StudentSummary | null>(null);
   const [contextReloadKey, setContextReloadKey] = useState(0);
+  const [pendingEvidenceMessageId,setPendingEvidenceMessageId]=useState<string|null>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [staffUserIdInput, setStaffUserIdInput] = useState<string>(() => getStaffUserId());
   const [hasSession, setHasSession] = useState<boolean>(() => Boolean(getSessionToken()));
@@ -189,6 +207,14 @@ export const App: React.FC = () => {
     [conversations, selectedId]
   );
 
+  useEffect(()=>{
+    if(!pendingEvidenceMessageId||!selectedConversation)return;
+    const message=selectedConversation.messages.find((item)=>item.id===pendingEvidenceMessageId);
+    if(!message)return;
+    document.getElementById(`message-${pendingEvidenceMessageId}`)?.scrollIntoView({behavior:'smooth',block:'center'});
+    setPendingEvidenceMessageId(null);
+  },[pendingEvidenceMessageId,selectedConversation?.id,selectedConversation?.messages]);
+
   useEffect(() => {
     const handleSessionExpired = () => {
       clearSessionAIKey();
@@ -232,8 +258,7 @@ export const App: React.FC = () => {
     setConversations((current) =>
       current.map((conversation) =>
         conversation.pageId === context.pageId &&
-        (conversation.studentId === context.studentId ||
-          (!conversation.studentId && conversation.id === context.studentId))
+        conversation.studentId === context.studentId
           ? {
               ...conversation,
               studentId: context.studentId,
@@ -401,30 +426,111 @@ export const App: React.FC = () => {
   }, [selectedConversation?.pageId, selectedId]);
 
   useEffect(() => {
-    if (!selectedConversation) return;
+    if (!selectedConversation) {
+      setStudentIdentity(null);
+      setStudentOptions([]);
+      setStudentSummary(null);
+      return;
+    }
     const controller = new AbortController();
-    const studentId = selectedConversation.studentId || selectedConversation.id;
+    setStudentIdentity(null);
+    setStudentOptions([]);
+    setStudentSummary(null);
     setIsLoadingContext(true);
-    getStudentContext({
-      pageId: selectedConversation.pageId,
-      studentId,
-      studentName: selectedConversation.studentName,
-      signal: controller.signal
-    })
-      .then(applyStudentContext)
+    getConversationStudentLink(selectedConversation.id, selectedConversation.pageId, controller.signal)
+      .then(({ identity, students }) => {
+        if (controller.signal.aborted) return;
+        setStudentIdentity(identity);
+        setStudentOptions(students);
+        setConversations((current) => current.map((conversation) => conversation.id === selectedConversation.id
+          ? { ...conversation, studentId: identity.student?.id, studentName: identity.student?.name || identity.customerName,
+              profile: undefined, memories: undefined, contextRevision: undefined, studentRevision: identity.student?.revision }
+          : conversation));
+      })
       .catch((error) => {
-        if (!isAbortError(error)) setErrorMessage(getErrorMessage(error));
+        if (!controller.signal.aborted && !isAbortError(error)) setErrorMessage(getErrorMessage(error));
       })
       .finally(() => {
         if (!controller.signal.aborted) setIsLoadingContext(false);
       });
     return () => controller.abort();
-  }, [
-    applyStudentContext,
-    contextReloadKey,
-    selectedConversation?.id,
-    selectedConversation?.pageId
-  ]);
+  }, [selectedConversation?.id, selectedConversation?.pageId]);
+
+  useEffect(() => {
+    const current = selectedConversation;
+    const linkedStudent = studentIdentity && studentIdentity.conversationId === current?.id ? studentIdentity.student : null;
+    if (!current || !linkedStudent) {
+      setStudentSummary(null);
+      setIsLoadingContext(false);
+      return;
+    }
+    const controller = new AbortController();
+    setIsLoadingContext(true);
+    Promise.all([
+      getStudentContext({ pageId: current.pageId, studentId: linkedStudent.id, studentName: linkedStudent.name, signal: controller.signal }),
+      getStudentSummary(linkedStudent.id, controller.signal)
+    ])
+      .then(([context, summary]) => {
+        if (controller.signal.aborted) return;
+        applyStudentContext(context);
+        setStudentSummary(summary);
+        setStudentIdentity((identity) => identity?.student?.id === linkedStudent.id
+          ? { ...identity, student: { ...identity.student, revision: summary.revision } }
+          : identity);
+        setConversations((rows) => rows.map((conversation) => conversation.id === current.id
+          ? { ...conversation, studentRevision: summary.revision }
+          : conversation));
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted && !isAbortError(error)) setErrorMessage(getErrorMessage(error));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoadingContext(false);
+      });
+    return () => controller.abort();
+  }, [applyStudentContext, contextReloadKey, selectedConversation?.id, selectedConversation?.pageId, studentIdentity?.student?.id]);
+
+  const handleLinkStudent = useCallback(async (input:{studentId?:string;newStudentName?:string;importLegacyContext?:boolean}) => {
+    if (!selectedConversation) return;
+    const result = await linkStudentToConversation({
+      conversationId:selectedConversation.id,pageId:selectedConversation.pageId,...input
+    });
+    setStudentIdentity(result.identity);
+    setStudentOptions(result.students);
+    setConversations((current)=>current.map((conversation)=>conversation.id===selectedConversation.id
+      ? {...conversation,studentId:result.identity.student?.id,studentName:result.identity.student?.name||result.identity.customerName,
+        profile:undefined,memories:undefined,contextRevision:undefined,studentRevision:result.identity.student?.revision}
+      :conversation));
+  },[selectedConversation]);
+
+  const refreshStudentSummary = useCallback(async () => {
+    const studentId=studentIdentity?.student?.id;
+    if(!studentId) return null;
+    const summary=await getStudentSummary(studentId);
+    setStudentSummary(summary);
+    setStudentIdentity((identity)=>identity?.student?.id===studentId
+      ? {...identity,student:{...identity.student,revision:summary.revision}}:identity);
+    setConversations((current)=>current.map((conversation)=>conversation.id===selectedConversation?.id
+      ? {...conversation,studentRevision:summary.revision}:conversation));
+    return summary;
+  },[selectedConversation?.id,studentIdentity?.student?.id]);
+
+  const handleConfirmReviewSession = useCallback(async (reviewSessionId:string) => {
+    const studentId=studentIdentity?.student?.id;
+    if(!studentId) return;
+    await confirmReviewSession({studentId,reviewSessionId,confirmed:true,evidence:'Nhân viên xác nhận đã gửi nhận xét.'});
+    await refreshStudentSummary();
+  },[refreshStudentSummary,studentIdentity?.student?.id]);
+
+  const handleSyncConversationHistory = useCallback(async () => {
+    if(!selectedConversation) return;
+    const result=await syncConversationHistory({conversationId:selectedConversation.id,pageId:selectedConversation.pageId,pages:3});
+    await refreshStudentSummary();
+    const messages=await getConversationMessages(selectedConversation.id,selectedConversation.pageId,MESSAGE_LIMIT);
+    setConversations((current)=>current.map((conversation)=>conversation.id===selectedConversation.id
+      ? {...conversation,messages:messages.map(mapChatMessage)}:conversation));
+    return result;
+  },[refreshStudentSummary,selectedConversation]);
 
   const handleContextMutationError = useCallback((error: unknown) => {
     setErrorMessage(getErrorMessage(error));
@@ -454,6 +560,16 @@ export const App: React.FC = () => {
       prev.map((c) => (c.id === id && c.unreadCount > 0 ? { ...c, unreadCount: 0 } : c))
     );
   }, []);
+
+  const handleOpenEvidence=useCallback((conversationId:string,messageId?:string)=>{
+    if(!conversations.some((item)=>item.id===conversationId)) {
+      setErrorMessage('Hội thoại nguồn hiện không nằm trong danh sách đã tải. Hãy làm mới danh sách rồi mở lại nguồn.');
+      return;
+    }
+    if(messageId)setPendingEvidenceMessageId(messageId);
+    handleSelectConversation(conversationId);
+    setMobileView('chat');
+  },[conversations,handleSelectConversation]);
 
   const handleCopyDraft = useCallback(() => {
     if (!draftMessage.trim()) return;
@@ -583,7 +699,7 @@ export const App: React.FC = () => {
 
   // Fast Pedagogical Assignment Review Generator connected to Backend API
   const handleGradeAssignment = useCallback(
-    async (reviewText: string) => {
+    async (reviewText: string, assignmentId?:string, assignmentTitle?:string, reviewSessionKey?:string) => {
       if (!selectedConversation) return;
       const trimmed = reviewText.trim();
       if (!trimmed) return;
@@ -593,14 +709,20 @@ export const App: React.FC = () => {
           conversationId: selectedConversation.id,
           teacherInput: trimmed,
           pronouns: currentPronouns,
-          messages: selectedConversation.messages || []
+          messages: selectedConversation.messages || [],
+          studentId: studentIdentity?.student?.id,
+          contextRevision: studentSummary?.revision,
+          assignmentId,
+          assignmentTitle,
+          reviewSessionKey
         });
 
         const options: AssignmentReviewOption[] = response.suggestions.map((sug, index) => ({
           id: sug.id || `asg_${Date.now()}_${index}`,
           tone: sug.tone,
           content: sug.content,
-          usedFacts: sug.usedFacts || [trimmed]
+          usedFacts: sug.usedFacts || [trimmed],
+          reviewSessionId: response.reviewSessionId || undefined
         }));
 
         setConversations((prev) =>
@@ -613,16 +735,18 @@ export const App: React.FC = () => {
               : c
           )
         );
+        await refreshStudentSummary();
+        return response.reviewSessionId || undefined;
       } catch (error) {
         setErrorMessage(getErrorMessage(error));
         throw error;
       }
     },
-    [selectedConversation, currentPronouns]
+    [selectedConversation, currentPronouns, refreshStudentSummary, studentIdentity?.student?.id, studentSummary?.revision]
   );
 
   const handleAddCustomField = useCallback(async (field: Omit<CustomField, 'id' | 'source'>) => {
-    if (!selectedConversation) return;
+    if (!selectedConversation || !studentIdentity?.student) return;
     setIsSavingContext(true);
     setErrorMessage('');
     try {
@@ -640,11 +764,11 @@ export const App: React.FC = () => {
     } finally {
       setIsSavingContext(false);
     }
-  }, [applyStudentContext, handleContextMutationError, selectedConversation]);
+  }, [applyStudentContext, handleContextMutationError, selectedConversation, studentIdentity?.student?.id]);
 
   // Accept AI Suggested Field in Profile
   const handleAcceptAiProfileSuggestion = useCallback(async (fieldKey: string, newValue: string) => {
-    if (!selectedConversation?.profile) return;
+    if (!selectedConversation?.profile || !studentIdentity?.student) return;
     const fields = selectedConversation.profile.fields.map((field) =>
       field.key === fieldKey
         ? {
@@ -678,11 +802,11 @@ export const App: React.FC = () => {
     } finally {
       setIsSavingContext(false);
     }
-  }, [applyStudentContext, handleContextMutationError, selectedConversation]);
+  }, [applyStudentContext, handleContextMutationError, selectedConversation, studentIdentity?.student?.id]);
 
   // Save new memory item or apply suggested memory
   const handleSaveMemory = useCallback(async (content: string, reason?: string) => {
-    if (!selectedConversation) return;
+    if (!selectedConversation || !studentIdentity?.student) return;
     setIsSavingContext(true);
     try {
       const context = await createStudentMemory({
@@ -700,13 +824,13 @@ export const App: React.FC = () => {
     } finally {
       setIsSavingContext(false);
     }
-  }, [applyStudentContext, handleContextMutationError, selectedConversation]);
+  }, [applyStudentContext, handleContextMutationError, selectedConversation, studentIdentity?.student?.id]);
 
   const handleMemoryAction = useCallback(async (
     memoryId: string,
     action: 'activate' | 'archive' | 'restore'
   ) => {
-    if (!selectedConversation) return;
+    if (!selectedConversation || !studentIdentity?.student) return;
     setIsSavingContext(true);
     try {
       const context = await updateStudentMemory({
@@ -723,10 +847,10 @@ export const App: React.FC = () => {
     } finally {
       setIsSavingContext(false);
     }
-  }, [applyStudentContext, handleContextMutationError, selectedConversation]);
+  }, [applyStudentContext, handleContextMutationError, selectedConversation, studentIdentity?.student?.id]);
 
   const handleDeleteMemory = useCallback(async (memoryId: string) => {
-    if (!selectedConversation) return;
+    if (!selectedConversation || !studentIdentity?.student) return;
     if (!window.confirm('Xóa hẳn ghi nhớ này? Thao tác này không thể hoàn tác.')) return;
     setIsSavingContext(true);
     try {
@@ -743,13 +867,13 @@ export const App: React.FC = () => {
     } finally {
       setIsSavingContext(false);
     }
-  }, [applyStudentContext, handleContextMutationError, selectedConversation]);
+  }, [applyStudentContext, handleContextMutationError, selectedConversation, studentIdentity?.student?.id]);
 
   const handleUpdateCustomField = useCallback(async (
     fieldId: string,
     changes: { value?: string; useInSuggestions?: boolean; hidden?: boolean }
   ) => {
-    if (!selectedConversation) return;
+    if (!selectedConversation || !studentIdentity?.student) return;
     setIsSavingContext(true);
     try {
       const context = await updateStudentCustomField({
@@ -766,10 +890,10 @@ export const App: React.FC = () => {
     } finally {
       setIsSavingContext(false);
     }
-  }, [applyStudentContext, handleContextMutationError, selectedConversation]);
+  }, [applyStudentContext, handleContextMutationError, selectedConversation, studentIdentity?.student?.id]);
 
   const handleDeleteCustomField = useCallback(async (fieldId: string) => {
-    if (!selectedConversation) return;
+    if (!selectedConversation || !studentIdentity?.student) return;
     if (!window.confirm('Xóa định nghĩa field và giá trị của học viên này?')) return;
     setIsSavingContext(true);
     try {
@@ -786,7 +910,7 @@ export const App: React.FC = () => {
     } finally {
       setIsSavingContext(false);
     }
-  }, [applyStudentContext, handleContextMutationError, selectedConversation]);
+  }, [applyStudentContext, handleContextMutationError, selectedConversation, studentIdentity?.student?.id]);
 
   const handleGenerateSuggestions = useCallback(async () => {
     if (!selectedConversation || isGenerating) return;
@@ -800,8 +924,8 @@ export const App: React.FC = () => {
       // Gọi Backend API (tích hợp AI Key & Model nếu người dùng đã nhập)
       const result = await createSuggestions({
         conversationId: selectedConversation.id,
-        studentId: selectedConversation.studentId || selectedConversation.id,
-        contextRevision: selectedConversation.contextRevision || 0,
+        studentId: studentIdentity?.student?.id,
+        contextRevision: studentSummary?.revision,
         pronouns: currentPronouns,
         messages: selectedConversation.messages,
       });
@@ -835,7 +959,7 @@ export const App: React.FC = () => {
     } finally {
       if (requestNumber === suggestionRequestRef.current) setIsGenerating(false);
     }
-  }, [currentPronouns, isGenerating, selectedConversation]);
+  }, [currentPronouns, isGenerating, selectedConversation, studentIdentity?.student?.id, studentSummary?.revision]);
 
 
   const applyStaffUserId = useCallback(() => {
@@ -997,6 +1121,14 @@ export const App: React.FC = () => {
             aiMode={aiMode}
             isContextLoading={isLoadingContext}
             isSavingContext={isSavingContext}
+            studentIdentity={studentIdentity?.conversationId===selectedConversation?.id?studentIdentity:null}
+            studentOptions={studentOptions}
+            studentSummary={studentSummary}
+            onLinkStudent={handleLinkStudent}
+            onRefreshStudentSummary={refreshStudentSummary}
+            onConfirmReviewSession={handleConfirmReviewSession}
+            onSyncConversationHistory={handleSyncConversationHistory}
+            onOpenEvidence={handleOpenEvidence}
             onOpenAiSettings={() => setShowAiSettings(true)}
           />
         </div>
@@ -1173,7 +1305,6 @@ function mapConversationSummary(
     id: item.id,
     pageId: item.pageId,
     pageName: item.pageName || pageNameById.get(item.pageId),
-    studentId: item.customerId || item.id,
     studentName: item.customerName || 'Khách hàng Pancake',
     lastMessage: item.lastMessage || 'Chưa có nội dung tin nhắn',
     lastActiveAt: formatTimestamp(item.updatedAt),
@@ -1188,6 +1319,7 @@ function mapChatMessage(message: BackendChatMessage): ChatMessage {
   return {
     id: message.id,
     sender: message.sender,
+    senderName: message.senderName,
     text: message.text || getAttachmentText(message.attachments),
     sentAt: formatTimestamp(message.createdAt),
     createdAt: message.createdAt,

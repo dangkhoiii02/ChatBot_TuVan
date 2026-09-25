@@ -5,9 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "dev:fixtures-ui": "node tests/run-fixture-ui.mjs",
     "build": "tsc",
     "start": "node dist/server.js",
-    "typecheck": "tsc --noEmit"
+    "backup": "node scripts/backup.mjs",
+    "restore": "node scripts/restore.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.mjs",
+    "test:integration": "node --test tests/backend-fixes.integration.test.mjs",
+    "test:migrations": "node --test tests/migrations.integration.test.mjs"
   },
   "dependencies": {
     "dotenv": "^16.4.7",

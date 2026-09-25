@@ -141,21 +141,24 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
           }
 
           const isStudent = msg.sender === 'student';
+          const senderLabel = msg.senderName?.trim() || (isStudent ? conversation.studentName : 'Thầy Minh (Bạn)');
+          const senderInitials = senderLabel.split(' ').slice(-2).map((part) => part[0]).join('').toUpperCase();
 
           return (
             <div
+              id={`message-${msg.id}`}
               key={msg.id}
               className={`message-row ${isStudent ? 'row-student' : 'row-staff'}`}
             >
               {isStudent && (
-                <div className="message-sender-avatar" title={conversation.studentName}>
-                  {initials}
+                <div className="message-sender-avatar" title={senderLabel}>
+                  {senderInitials}
                 </div>
               )}
 
               <div className={`message-bubble-wrapper ${isStudent ? 'student-wrapper' : 'staff-wrapper'}`}>
                 <div className="message-sender-title">
-                  {isStudent ? conversation.studentName : 'Thầy Minh (Bạn)'}
+                  {senderLabel}
                 </div>
                 <div className={`message-bubble ${isStudent ? 'bubble-student' : 'bubble-staff'}`}>
                   {msg.text}
@@ -174,8 +177,8 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
               </div>
 
               {!isStudent && (
-                <div className="message-sender-avatar staff-avatar" title="Thầy Minh">
-                  TM
+                <div className="message-sender-avatar staff-avatar" title={senderLabel}>
+                  {senderInitials}
                 </div>
               )}
             </div>
