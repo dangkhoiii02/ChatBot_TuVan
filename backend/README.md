@@ -53,8 +53,8 @@ Bien tuy chon (mac dinh tat):
 
 ```bash
 AI_PROVIDER=gemini
-GEMINI_API_KEY=your_gemini_api_key
-GEMINI_MODEL=<model-id-duoc-cap-quyen>
+AI_PROVIDER_API_KEY=your_gemini_api_key
+AI_PROVIDER_MODEL=<model-id-duoc-cap-quyen>
 AI_KNOWLEDGE_DIR=../data
 ```
 

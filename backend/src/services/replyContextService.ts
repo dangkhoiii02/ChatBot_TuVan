@@ -15,8 +15,7 @@ type ResolveReplyContextInput = {
 
 /**
  * Uses Pancake as the authoritative source when available, then keeps the
- * latest unanswered turn: the last staff reply plus every following student
- * message through the newest received message. This preserves bursts such as
+ * latest student turn with adjacent staff replies. This preserves bursts such as
  * "thầy ơi" / "em cần hỏi" / the actual question instead of retaining only
  * the final line.
  */
@@ -24,10 +23,16 @@ export async function resolveReplyContext(input: ResolveReplyContextInput): Prom
   let messages = input.messages;
   if (input.pageId) {
     const rows=input.studentId?listCachedMessagesForStudent(input.pageId,input.conversationId,input.studentId,100):[];
-    if(rows.length) messages=rows.map((row)=>({
-      id:row.id,conversationId:row.conversationId,sender:row.sender as 'student'|'staff'|'system',senderName:row.senderName||undefined,text:row.text,
-      attachments:parseAttachments(row.attachmentsJson),createdAt:row.createdAt
-    }));
+    if(rows.length) {
+      const liveById = new Map(input.messages.filter((message) => message.id).map((message) => [message.id, message]));
+      const cached=rows.map((row)=>({
+        id:row.id,conversationId:row.conversationId,
+        sender:liveById.get(row.id)?.sender || row.sender as 'student'|'staff'|'system',
+        senderName:row.senderName||undefined,text:row.text,
+        attachments:parseAttachments(row.attachmentsJson),createdAt:row.createdAt
+      }));
+      if (cached.some((message) => message.sender === 'student')) messages=cached;
+    }
   }
 
   return selectLatestUnansweredTurn(messages);
@@ -55,13 +60,9 @@ export function selectLatestUnansweredTurn(messages: ContextMessage[]): ContextM
     }
   }
 
-  // A newer staff message means the latest student turn was already answered.
-  const hasNewerStaffReply = ordered
-    .slice(latestStudentIndex + 1)
-    .some((message) => message.sender === 'staff');
-  if (hasNewerStaffReply) return [];
-
-  return ordered.slice(Math.max(latestStaffIndex, 0), latestStudentIndex + 1);
+  // Include replies after the last student message so AI sees what staff has
+  // already said when asked for a follow-up suggestion.
+  return ordered.slice(Math.max(latestStaffIndex, 0));
 }
 
 function parseAttachments(raw:string|null) {

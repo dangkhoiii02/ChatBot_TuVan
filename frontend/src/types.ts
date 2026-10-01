@@ -176,6 +176,8 @@ export type BackendHealth = {
   pancakeConfigured: boolean;
   pancakeAuthMode: 'page_access_token' | 'access_token' | 'missing';
   aiProvider: string;
+  aiModel?: string;
+  aiConfigured?: boolean;
 };
 
 export type BackendPageSummary = {

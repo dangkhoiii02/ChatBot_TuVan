@@ -20,8 +20,6 @@ export interface SuggestionPanelProps {
   onMemoryAction?: (id: string, action: 'activate' | 'archive' | 'restore') => void;
   onCloseMobile?: () => void;
   aiApiKey?: string;
-  aiModel?: string;
-  aiMode?: 'system' | 'user_override';
   isContextLoading?: boolean;
   isSavingContext?: boolean;
   studentIdentity?: StudentIdentity | null;
@@ -32,7 +30,6 @@ export interface SuggestionPanelProps {
   onConfirmReviewSession?: (reviewSessionId:string)=>Promise<void>;
   onSyncConversationHistory?: ()=>Promise<unknown>;
   onOpenEvidence?:(conversationId:string,messageId?:string)=>void;
-  onOpenAiSettings?: () => void;
 }
 
 type AssistantTab = 'suggestions' | 'profile' | 'grading' | 'memories';
@@ -63,8 +60,6 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
   onDeleteMemory,
   onMemoryAction,
   onCloseMobile,
-  aiModel,
-  aiMode = 'system',
   isContextLoading,
   isSavingContext,
   studentIdentity,
@@ -75,7 +70,6 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
   onConfirmReviewSession,
   onSyncConversationHistory,
   onOpenEvidence,
-  onOpenAiSettings
 }) => {
   const [activeTab, setActiveTab] = useState<AssistantTab>('suggestions');
   const [isPronounMenuOpen, setIsPronounMenuOpen] = useState(false);
@@ -237,24 +231,7 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
       {/* 1. PHẦN TRÊN CỐ ĐỊNH (PINNED TOP BAR) */}
       <div className="assistant-pinned-top">
         <div className="pinned-row-primary">
-          <div className="student-badge-cluster">
-            <span className="student-recipient-title">{conversation.studentName}</span>
-            <span className={`data-status-pill status-${profile?.dataStatus || 'unclear'}`}>
-              {isContextLoading
-                ? 'Đang tải hồ sơ'
-                : isSavingContext
-                  ? 'Đang lưu'
-                  : profile?.dataStatus === 'conflict'
-                    ? 'Có mâu thuẫn'
-                    : profile?.dataStatus === 'ai_suggested'
-                      ? 'AI đề xuất'
-                      : profile?.dataStatus === 'saved'
-                        ? 'Đã lưu'
-                        : 'Chưa đủ dữ liệu'}
-            </span>
-          </div>
-          <span className="persona-tag">Góc nhìn Thầy Minh</span>
-
+          <span className="student-recipient-title" title={conversation.studentName}>{conversation.studentName}</span>
           <div className="pinned-actions-right">
             <div className="pronoun-dropdown-wrapper">
               <button
@@ -298,29 +275,35 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
             )}
           </div>
         </div>
-
-        <div className="pinned-next-action">
-          <span className="action-lead">Việc tiếp theo:</span>
-          <span className="action-text">{profile?.nextAction || 'Chờ phản hồi từ học viên'}</span>
-        </div>
-
-        {/* Dải nút đổi nhanh danh xưng 1-click */}
-        <div className="pinned-pronoun-strip">
-          <span className="strip-title">Xưng hô nhanh:</span>
-          <div className="pronoun-pills-row">
-            {COMMON_PRONOUNS.map((pair) => (
-              <button
-                key={pair.label}
-                type="button"
-                className={`pronoun-quick-chip ${pair.label === currentPronoun.label ? 'active' : ''}`}
-                onClick={() => onChangePronouns(pair)}
-                title={`Đổi xưng hô: ${pair.senderCall} — ${pair.recipientCall}`}
-              >
-                {pair.label}
+        <div className="student-badge-cluster">
+            <span className={`data-status-pill status-${profile?.dataStatus || 'unclear'}`}>
+              {isContextLoading
+                ? 'Đang tải hồ sơ'
+                : isSavingContext
+                  ? 'Đang lưu'
+                  : studentIdentity?.status === 'needs_selection'
+                    ? 'Chưa liên kết hồ sơ'
+                  : profile?.dataStatus === 'conflict'
+                    ? 'Có mâu thuẫn'
+                    : profile?.dataStatus === 'ai_suggested'
+                      ? 'AI đề xuất'
+                      : profile?.dataStatus === 'saved'
+                        ? 'Đã lưu'
+                        : 'Chưa có dữ kiện xác nhận'}
+            </span>
+            {studentIdentity?.status === 'needs_selection' && (
+              <button type="button" className="student-link-shortcut" onClick={() => setActiveTab('profile')}>
+                Tạo/liên kết hồ sơ
               </button>
-            ))}
-          </div>
+            )}
         </div>
+
+        {profile?.nextAction && profile.nextAction !== 'Chưa xác định' && (
+          <div className="pinned-next-action">
+            <span className="action-lead">Việc tiếp theo</span>
+            <span className="action-text">{profile.nextAction}</span>
+          </div>
+        )}
       </div>
 
       {/* 2. 4 TABS NAVIGATION */}
@@ -332,7 +315,7 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
           className={`tab-btn ${activeTab === 'suggestions' ? 'active' : ''}`}
           onClick={() => setActiveTab('suggestions')}
         >
-          Gợi ý ({suggestions.length})
+          Gợi ý{suggestions.length > 0 ? ` · ${suggestions.length}` : ''}
         </button>
         <button
           type="button"
@@ -359,7 +342,7 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
           className={`tab-btn ${activeTab === 'memories' ? 'active' : ''}`}
           onClick={() => setActiveTab('memories')}
         >
-          Ghi nhớ ({memories.length})
+          Ghi nhớ{memories.length > 0 ? ` · ${memories.length}` : ''}
         </button>
       </div>
 
@@ -388,30 +371,8 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
               </div>
             )}
 
-            {/* AI ENGINE & MODEL STATUS STRIP */}
-            <div className="suggestion-engine-strip">
-              <button
-                type="button"
-                className="engine-status-badge"
-                onClick={onOpenAiSettings}
-                title="Bấm để đổi AI API Key hoặc chọn mô hình"
-              >
-                <span className={`engine-dot ${aiMode === 'user_override' ? 'dot-live' : 'dot-mock'}`} />
-                <span className="engine-text">
-                  {aiMode === 'user_override' ? (
-                    <>Cấu hình riêng: <strong>{aiModel || 'chưa đủ model'}</strong></>
-                  ) : (
-                    <>Cấu hình: <strong>AI hệ thống</strong></>
-                  )}
-                </span>
-                {onOpenAiSettings && (
-                  <span className="btn-engine-change">Đổi cấu hình</span>
-                )}
-              </button>
-            </div>
-
             <div className="pane-action-bar">
-              <span className="pane-title">3 phương án phản hồi tối ưu:</span>
+              <div className="pane-action-heading"><strong>Gợi ý trả lời</strong><small>AI soạn 3 phương án để bạn duyệt.</small></div>
               <button
                 type="button"
                 className="btn-create-suggestion"
@@ -423,7 +384,7 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
                     <span className="spinner-small" /> Đang soạn...
                   </>
                 ) : (
-                  '⚡ Tạo gợi ý'
+                  'Tạo gợi ý'
                 )}
               </button>
             </div>
@@ -435,10 +396,7 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
               </div>
             ) : suggestions.length === 0 ? (
               <div className="empty-tab-note">
-                <p>Chưa có câu gợi ý nào cho hội thoại này.</p>
-                <button type="button" className="btn-secondary" onClick={onGenerate}>
-                  Tạo gợi ý ngay
-                </button>
+                <p>Chưa có gợi ý. Bấm “Tạo gợi ý” ở trên để bắt đầu.</p>
               </div>
             ) : (
               <div className="suggestion-cards-stack">
@@ -512,9 +470,11 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
               onSyncHistory={onSyncConversationHistory|| (async()=>null)}
             />
             {studentIdentity?.status==='linked' ? <>
+            <details className="profile-advanced-details">
+              <summary>Thông tin bổ sung và trường tùy biến</summary>
             <div className="profile-section-header">
-              <span className="section-title">Thông tin cơ bản học viên</span>
-              <span className="section-hint">Tự động đồng bộ từ lịch sử chat</span>
+              <span className="section-title">Thông tin bổ sung</span>
+              <span className="section-hint">Dữ liệu cũ và trường tùy biến</span>
             </div>
 
             <div className="profile-fields-list">
@@ -674,6 +634,7 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
                 </div>
               )}
             </div>
+            </details>
             </> : <div className="empty-tab-note">Hãy chọn hoặc tạo hồ sơ học viên trước khi sửa ghi chú cũ.</div>}
           </div>
         )}

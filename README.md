@@ -57,18 +57,18 @@ Nếu client để trống cấu hình, backend đọc:
 
 ```dotenv
 AI_PROVIDER=openai
-AI_API_KEY=<api-key>
-AI_MODEL=<model-id-duoc-cap-quyen>
+AI_PROVIDER_API_KEY=<api-key>
+AI_PROVIDER_MODEL=<model-id-duoc-cap-quyen>
 ```
 
-Các lựa chọn provider: `auto`, `mock`, `openai`, `gemini`, `anthropic` (alias `claude`), `deepseek`, `groq`, `openrouter`, `mistral`, `xai`, `custom`. Biến `GEMINI_API_KEY`, `GEMINI_MODEL`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` được hỗ trợ để tương thích; dùng `AI_MODEL` cho model ngoài Gemini. Cấu hình client không mượn key/model máy chủ khi nhập thiếu.
+Các lựa chọn provider: `auto`, `mock`, `openai`, `gemini`, `anthropic` (alias `claude`), `deepseek`, `groq`, `openrouter`, `mistral`, `xai`, `custom`. Đổi cả ba biến `AI_PROVIDER`, `AI_PROVIDER_API_KEY`, `AI_PROVIDER_MODEL` khi chuyển nhà cung cấp hoặc model. Các biến cũ `AI_API_KEY`, `AI_MODEL`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` vẫn được hỗ trợ để tương thích. Cấu hình client không mượn key/model máy chủ khi nhập thiếu.
 
 Với gateway riêng:
 
 ```dotenv
 AI_PROVIDER=custom
-AI_API_KEY=<api-key>
-AI_MODEL=<model-id>
+AI_PROVIDER_API_KEY=<api-key>
+AI_PROVIDER_MODEL=<model-id>
 AI_BASE_URL=https://gateway.example/v1
 AI_ALLOWED_BASE_URLS=https://gateway.example/v1
 ```

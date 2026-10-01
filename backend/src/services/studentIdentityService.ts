@@ -217,6 +217,16 @@ export function filterMessagesForStudent<T extends {id?:string}>(pageId:string,c
   });
 }
 
+export function filterMessagesForConversation<T extends {id?:string}>(pageId:string,conversationId:string,messages:T[]) {
+  return messages.flatMap((message)=>{
+    if(!message.id) return [];
+    try {
+      const canonical=getCachedMessage(pageId,conversationId,message.id);
+      return [{...message,sender:canonical.sender,senderName:canonical.senderName,text:canonical.text,createdAt:canonical.createdAt}];
+    } catch { return []; }
+  });
+}
+
 export function getLatestStudentMessageForStudent(pageId:string,conversationId:string,studentId:string) {
   return getDatabase().prepare(`SELECT c.message_id AS id,c.created_at AS createdAt FROM conversation_message_cache c
     WHERE c.page_id=? AND c.conversation_id=? AND c.sender='student' AND (

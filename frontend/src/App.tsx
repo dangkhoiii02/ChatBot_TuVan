@@ -87,12 +87,13 @@ export const App: React.FC = () => {
   const [contextReloadKey, setContextReloadKey] = useState(0);
   const [pendingEvidenceMessageId,setPendingEvidenceMessageId]=useState<string|null>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [lastError, setLastError] = useState<string>('');
+  const [showBugPanel, setShowBugPanel] = useState(false);
   const [staffUserIdInput, setStaffUserIdInput] = useState<string>(() => getStaffUserId());
   const [hasSession, setHasSession] = useState<boolean>(() => Boolean(getSessionToken()));
   const allowDevUserHeader =
     import.meta.env.VITE_ALLOW_DEV_USER_HEADER === '1' ||
     import.meta.env.VITE_ALLOW_DEV_USER_HEADER === 'true';
-  const hasLoadedPagesRef = useRef(false);
   const suggestionRequestRef = useRef(0);
   const conversationRequestRef = useRef(0);
   const draftsByConversationRef = useRef(new Map<string, string>());
@@ -214,6 +215,10 @@ export const App: React.FC = () => {
     document.getElementById(`message-${pendingEvidenceMessageId}`)?.scrollIntoView({behavior:'smooth',block:'center'});
     setPendingEvidenceMessageId(null);
   },[pendingEvidenceMessageId,selectedConversation?.id,selectedConversation?.messages]);
+
+  useEffect(() => {
+    if (errorMessage) setLastError(errorMessage);
+  }, [errorMessage]);
 
   useEffect(() => {
     const handleSessionExpired = () => {
@@ -343,8 +348,7 @@ export const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (hasLoadedPagesRef.current) return;
-    hasLoadedPagesRef.current = true;
+    if (!hasSession) return;
 
     let isCurrent = true;
     const controller = new AbortController();
@@ -378,7 +382,7 @@ export const App: React.FC = () => {
       isCurrent = false;
       controller.abort();
     };
-  }, []);
+  }, [hasSession]);
 
   useEffect(() => {
     refreshConversations();
@@ -931,6 +935,7 @@ export const App: React.FC = () => {
       });
 
       if (requestNumber !== suggestionRequestRef.current) return;
+      setLastError('');
 
       setConversations((current) =>
         current.map((conversation) =>
@@ -1027,11 +1032,11 @@ export const App: React.FC = () => {
           >
             <span className={`dot-status ${aiMode === 'user_override' ? 'dot-green' : 'dot-amber'}`} />
             <span className="gemini-pill-label">
-              {aiMode === 'user_override' ? `AI riêng: ${aiModel || 'chưa đủ cấu hình'}` : 'AI hệ thống'}
+              {aiMode === 'user_override' ? `AI riêng: ${aiProvider} / ${aiModel || 'chưa đủ cấu hình'}` : `AI mặc định: ${health?.aiProvider || 'đang tải'}${health?.aiModel ? ` / ${health.aiModel}` : ''}`}
             </span>
           </button>
           <span className="badge-status-pill">{conversations.length} hội thoại</span>
-          {health && <span className="badge-status-pill">AI: {health.aiProvider}</span>}
+          {health && <span className="badge-status-pill">Server: {health.aiProvider}{health.aiModel ? ` / ${health.aiModel}` : ''}{health.aiConfigured === false ? ' · thiếu API key' : ''}</span>}
 
           {allowDevUserHeader && (
             <label className="badge-status-pill staff-user-id" title="Dev only: X-User-Id khi ALLOW_DEV_USER_HEADER">
@@ -1117,8 +1122,6 @@ export const App: React.FC = () => {
             onMemoryAction={handleMemoryAction}
             onCloseMobile={() => setMobileView('chat')}
             aiApiKey={aiApiKey}
-            aiModel={aiModel}
-            aiMode={aiMode}
             isContextLoading={isLoadingContext}
             isSavingContext={isSavingContext}
             studentIdentity={studentIdentity?.conversationId===selectedConversation?.id?studentIdentity:null}
@@ -1129,7 +1132,6 @@ export const App: React.FC = () => {
             onConfirmReviewSession={handleConfirmReviewSession}
             onSyncConversationHistory={handleSyncConversationHistory}
             onOpenEvidence={handleOpenEvidence}
-            onOpenAiSettings={() => setShowAiSettings(true)}
           />
         </div>
       </div>
@@ -1202,7 +1204,7 @@ export const App: React.FC = () => {
                 <legend>Nguồn cấu hình</legend>
                 <label className="ai-mode-option">
                   <input type="radio" name="ai-mode" checked={aiMode === 'system'} onChange={() => setAiMode('system')} />
-                  <span><strong>Cấu hình hệ thống</strong><small>Không gửi key/model override từ trình duyệt.</small></span>
+                  <span><strong>Mặc định hệ thống: {health?.aiProvider || 'đang tải'}{health?.aiModel ? ` / ${health.aiModel}` : ''}</strong><small>Dùng provider và model trên server; không gửi key từ trình duyệt.</small></span>
                 </label>
                 <label className="ai-mode-option">
                   <input type="radio" name="ai-mode" checked={aiMode === 'user_override'} onChange={() => setAiMode('user_override')} />
@@ -1256,9 +1258,12 @@ export const App: React.FC = () => {
               )}
               {aiConnectionStatus && <div className="settings-success" role="status">{aiConnectionStatus}</div>}
               {aiMode === 'system' && (
+                <>
+                {health?.aiConfigured === false && <div className="settings-error-summary" role="alert">Backend chưa có cấu hình AI hợp lệ. Hãy điền AI_PROVIDER, AI_PROVIDER_API_KEY và AI_PROVIDER_MODEL vào backend/.env rồi khởi động lại backend. Pancake token chỉ dùng để đọc tin nhắn.</div>}
                 <button type="button" className="btn-danger-text btn-clear-ai-override" onClick={handleUseSystemAi}>
                   Xóa toàn bộ cấu hình riêng đã lưu
                 </button>
+                </>
               )}
             </div>
 
@@ -1284,6 +1289,27 @@ export const App: React.FC = () => {
           </div>
         </div>
       )}
+      <div className="bug-dock">
+        {showBugPanel && (
+          <section className="bug-panel" aria-label="Chi tiết lỗi">
+            <div className="bug-panel-header">
+              <strong>Thông tin lỗi</strong>
+              <button type="button" onClick={() => setShowBugPanel(false)} aria-label="Đóng thông tin lỗi">×</button>
+            </div>
+            {lastError ? <p role="alert">{lastError}</p> : <p>Chưa ghi nhận lỗi trong phiên này.</p>}
+            <dl>
+              <div><dt>Backend</dt><dd>{health?.ok ? 'Đang kết nối' : 'Chưa kết nối'}</dd></div>
+              <div><dt>AI</dt><dd>{health?.aiProvider || 'Chưa rõ'}{health?.aiModel ? ` / ${health.aiModel}` : ''}</dd></div>
+              <div><dt>Hội thoại</dt><dd>{selectedConversation ? `${selectedConversation.messages.length} tin đã tải` : 'Chưa chọn'}</dd></div>
+            </dl>
+            {lastError && <button type="button" className="bug-panel-clear" onClick={() => { setLastError(''); setErrorMessage(''); }}>Xóa lỗi</button>}
+          </section>
+        )}
+        <button type="button" className={`bug-button ${lastError ? 'has-error' : ''}`} onClick={() => setShowBugPanel((open) => !open)} aria-label={lastError ? 'Xem lỗi gần nhất' : 'Xem trạng thái và lỗi'} aria-expanded={showBugPanel} title="Xem lỗi">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 6.5 6.5 4M16 6.5 17.5 4M7 10H4m16 0h-3M7 15H4m16 0h-3M8 19l-1.5 2M16 19l1.5 2"/><rect x="7" y="6" width="10" height="14" rx="5"/><path d="M7 11h10"/></svg>
+          {lastError && <span className="bug-button-dot" />}
+        </button>
+      </div>
     </div>
   );
 };

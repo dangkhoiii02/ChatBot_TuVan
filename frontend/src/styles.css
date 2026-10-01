@@ -56,6 +56,76 @@ html, body {
   height: 100%;
 }
 
+.bug-dock {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 80;
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 10px;
+}
+.bug-button {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border: 1px solid #cbd5e1;
+  border-radius: 50%;
+  background: #fff;
+  color: #334155;
+  box-shadow: var(--shadow-lg);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.bug-button:hover, .bug-button:focus-visible { color: #1d4ed8; border-color: #3b82f6; }
+.bug-button.has-error { color: #b91c1c; border-color: #fca5a5; }
+.bug-button-dot {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 11px;
+  height: 11px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #ef4444;
+}
+.bug-panel {
+  width: min(360px, calc(100vw - 32px));
+  max-height: min(420px, 60vh);
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--shadow-lg);
+  color: var(--text-body);
+  font-size: 13px;
+}
+.bug-panel-header { display: flex; align-items: center; justify-content: space-between; color: var(--text-main); }
+.bug-panel-header button { border: 0; background: none; cursor: pointer; font-size: 22px; line-height: 1; }
+.bug-panel p { margin: 12px 0; overflow-wrap: anywhere; }
+.bug-panel dl { border-top: 1px solid var(--border-color); padding-top: 8px; }
+.bug-panel dl div { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; }
+.bug-panel dt { color: var(--text-muted); }
+.bug-panel dd { text-align: right; overflow-wrap: anywhere; }
+.bug-panel-clear { margin-top: 12px; border: 0; background: none; color: var(--primary); cursor: pointer; font-weight: 600; }
+.student-link-shortcut {
+  border: 0;
+  background: none;
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.student-link-shortcut:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+@media (max-width: 768px) {
+  .bug-dock { right: 12px; bottom: calc(68px + env(safe-area-inset-bottom, 0px)); }
+}
+
 /* ==========================================================================
    App Layout
    App Header / Navbar
@@ -4196,4 +4266,56 @@ html, body {
   .learning-card-heading,.learning-list-heading { align-items: flex-start; flex-direction: column; }
   .learning-issue { flex-direction: column; }
   .learning-actions-row { align-items: stretch; flex-direction: column; }
+}
+
+/* Functional panel: compact hierarchy and one primary action per view. */
+.assistant-panel-v2 .assistant-pinned-top {
+  display: grid;
+  gap: 9px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--border-color);
+  background: #fff;
+  flex-shrink: 0;
+}
+.assistant-panel-v2 .pinned-row-primary { align-items: flex-start; gap: 12px; }
+.assistant-panel-v2 .student-badge-cluster { flex-wrap: wrap; gap: 5px 9px; }
+.assistant-panel-v2 .student-recipient-title { min-width: 0; flex: 1; font-size: 16px; line-height: 1.35; }
+.assistant-panel-v2 .data-status-pill { font-size: 11px; padding: 4px 8px; }
+.assistant-panel-v2 .pinned-actions-right { align-self: flex-start; }
+.assistant-panel-v2 .btn-quick-pronoun { min-height: 34px; padding: 6px 9px; font-size: 12px; white-space: nowrap; }
+.assistant-panel-v2 .pinned-next-action { margin: 0; padding: 8px 10px; line-height: 1.4; }
+.assistant-panel-v2 .action-text { white-space: normal; }
+.assistant-panel-v2 .assistant-tabs-nav {
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+  background: #fff;
+}
+.assistant-panel-v2 .assistant-tabs-nav .tab-btn {
+  min-height: 38px;
+  padding: 7px 4px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.assistant-panel-v2 .assistant-tabs-nav .tab-btn.active { background: #eaf2ff; }
+.assistant-panel-v2 .assistant-tabs-nav .tab-btn.active::after { display: none; }
+.assistant-panel-v2 .assistant-tabs-nav .tab-btn:focus-visible,
+.assistant-panel-v2 .btn-quick-pronoun:focus-visible,
+.assistant-panel-v2 .btn-create-suggestion:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.assistant-panel-v2 .assistant-tab-body { padding: 16px; background: #f8fafc; }
+.assistant-panel-v2 .pane-action-bar { align-items: flex-start; gap: 12px; }
+.pane-action-heading { display: grid; gap: 3px; min-width: 0; }
+.pane-action-heading strong { color: var(--text-main); font-size: 14px; }
+.pane-action-heading small { color: var(--text-muted); font-size: 11px; line-height: 1.4; }
+.assistant-panel-v2 .btn-create-suggestion { min-height: 38px; padding: 8px 12px; white-space: nowrap; font-size: 12px; }
+.assistant-panel-v2 .empty-tab-note { margin-top: 2px; }
+.profile-advanced-details { border: 1px solid var(--border-color); border-radius: 10px; background: #fff; padding: 0 12px; }
+.profile-advanced-details > summary { padding: 12px 0; color: var(--primary); font-size: 12px; font-weight: 700; cursor: pointer; }
+.profile-advanced-details[open] { padding-bottom: 12px; }
+.profile-advanced-details .profile-section-header { margin-top: 8px; }
+@media (max-width: 640px) {
+  .assistant-panel-v2 .assistant-pinned-top { padding: 10px 12px; }
+  .assistant-panel-v2 .assistant-tabs-nav { padding: 6px 8px; gap: 2px; }
+  .assistant-panel-v2 .assistant-tabs-nav .tab-btn { font-size: 11px; }
+  .assistant-panel-v2 .assistant-tab-body { padding: 12px; }
 }

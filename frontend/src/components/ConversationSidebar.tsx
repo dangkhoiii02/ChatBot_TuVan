@@ -70,7 +70,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
       {/* Header */}
       <div className="sidebar-header">
         <div className="sidebar-title-row">
-          <h2 className="sidebar-title">Học viên</h2>
+          <h2 className="sidebar-title">Hội thoại Pancake</h2>
           <div className="sidebar-title-actions">
             <span className="sidebar-total-badge">{conversations.length} hội thoại</span>
             {onRefresh && (

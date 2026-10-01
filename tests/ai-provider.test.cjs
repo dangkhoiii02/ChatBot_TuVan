@@ -24,6 +24,12 @@ test('user credentials never borrow server model or key', () => {
   assert.throws(() => resolveAI({ provider: 'openai', apiKey: 'user-key' }, { AI_MODEL: 'gpt-server' }), /model/);
 });
 test('server configuration and legacy Gemini environment remain supported', () => {
+  for (const provider of ['gemini', 'anthropic', 'openai', 'deepseek']) {
+    const settings = resolveAI({}, { AI_PROVIDER: provider, AI_PROVIDER_API_KEY: 'server-key', AI_PROVIDER_MODEL: 'selected-model' });
+    assert.equal(settings.provider, provider);
+    assert.equal(settings.apiKey, 'server-key');
+    assert.equal(settings.model, 'selected-model');
+  }
   assert.equal(resolveAI({}, { AI_PROVIDER: 'openai', AI_API_KEY: 'server', AI_MODEL: 'gpt-test' }).provider, 'openai');
   assert.equal(resolveAI({}, { GEMINI_API_KEY: 'AIza-test', GEMINI_MODEL: 'gemini-test' }).provider, 'gemini');
 });

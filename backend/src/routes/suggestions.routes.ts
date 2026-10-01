@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { createSuggestions } from '../services/suggestionService.js';
 import { resolveReplyContext } from '../services/replyContextService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { filterMessagesForStudent, getConversationIdentity, getEffectiveMessageStudent, getLatestStudentMessageForStudent, getCachedMessage, getStudent } from '../services/studentIdentityService.js';
+import { filterMessagesForConversation, filterMessagesForStudent, getConversationIdentity, getEffectiveMessageStudent, getLatestStudentMessageForStudent, getCachedMessage, getStudent } from '../services/studentIdentityService.js';
 import { createReviewSession, getStudentSummary, listReviewSessions } from '../services/studentLearningService.js';
 import { getDatabase } from '../db/index.js';
 import { formatStudentContext } from '../services/promptStudentContext.js';
@@ -67,7 +67,14 @@ suggestionsRouter.post(
       apiKey: input.apiKey || headerKey,
       model: input.model || headerModel
     };
-    try { resolveAI(request); } catch (error) { throw new HttpError(400, error instanceof Error ? error.message : 'Cấu hình AI không hợp lệ'); }
+    try { resolveAI(request); } catch (error) {
+      const message = error instanceof Error ? error.message : 'Cấu hình AI không hợp lệ';
+      const usingSystemAI = !request.apiKey && !request.model && !request.baseUrl && !request.provider;
+      if (usingSystemAI && message === 'Vui lòng nhập API key của nhà cung cấp đã chọn.') {
+        throw new HttpError(503, 'Backend chưa có API key AI. Hãy cấu hình AI_PROVIDER_API_KEY trong backend/.env rồi khởi động lại backend.', 'AI_NOT_CONFIGURED');
+      }
+      throw new HttpError(400, message, 'AI_CONFIG_INVALID');
+    }
     const pageId = req.staffAuth?.pageId;
     if (!pageId) throw new HttpError(403, 'Không xác định được page của phiên đăng nhập.', 'PAGE_ACCESS_DENIED');
     const identity = getConversationIdentity(pageId, input.conversationId);
@@ -102,7 +109,9 @@ suggestionsRouter.post(
       if(input.contextRevision!==undefined&&input.contextRevision!==contextStudent.revision)
         throw new HttpError(409,`Hồ sơ học viên đã đổi từ revision ${input.contextRevision} sang ${contextStudent.revision}. Hãy tải lại hồ sơ rồi thử lại.`,'STUDENT_CONTEXT_STALE');
     }
-    const scopedClientMessages=filterMessagesForStudent(pageId,input.conversationId,contextStudent?.id,input.messages);
+    const scopedClientMessages=contextStudent
+      ? filterMessagesForStudent(pageId,input.conversationId,contextStudent.id,input.messages)
+      : input.mode === 'chat' ? filterMessagesForConversation(pageId,input.conversationId,input.messages) : [];
     const messages = input.mode === 'chat'
       ? await resolveReplyContext({
           conversationId: input.conversationId,
@@ -112,7 +121,9 @@ suggestionsRouter.post(
         })
       : scopedClientMessages;
     if (input.mode === 'chat' && !messages.some((message) => message.sender === 'student')) {
-      throw new HttpError(409, 'Không có cụm tin nhắn mới nào của học viên đang chờ trả lời.', 'NO_PENDING_STUDENT_MESSAGES');
+      throw new HttpError(409, contextStudent
+        ? 'Chưa có tin nhắn được gắn với hồ sơ học viên này. Hãy kiểm tra liên kết tin nhắn.'
+        : 'Chưa có tin nhắn của học viên trong hội thoại này để tạo gợi ý.', 'NO_STUDENT_MESSAGES');
     }
 
     let studentContext: Parameters<typeof createSuggestions>[0]['studentContext'];

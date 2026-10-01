@@ -11,15 +11,15 @@ function resolveAI(input = {}, env = process.env) {
   const userConfigured = ['apiKey', 'model', 'baseUrl'].some(k => input[k]?.trim()) || Boolean(input.provider && input.provider !== 'auto');
   let provider = ((userConfigured ? input.provider : env.AI_PROVIDER) || 'auto').trim().toLowerCase();
   if (provider === 'claude') provider = 'anthropic';
-  let apiKey = ((userConfigured ? input.apiKey : env.AI_API_KEY) || '').trim();
-  let model = ((userConfigured ? input.model : env.AI_MODEL) || '').trim();
+  let apiKey = ((userConfigured ? input.apiKey : (env.AI_PROVIDER_API_KEY || env.AI_API_KEY)) || '').trim();
+  let model = ((userConfigured ? input.model : (env.AI_PROVIDER_MODEL || env.AI_MODEL)) || '').trim();
   const baseUrl = ((userConfigured ? input.baseUrl : (env.OPENAI_BASE_URL || env.AI_BASE_URL)) || '').trim();
-  if (!userConfigured && !apiKey) {
-    if (provider === 'gemini' || (provider === 'auto' && env.GEMINI_API_KEY)) {
-      apiKey = env.GEMINI_API_KEY || ''; model ||= env.GEMINI_MODEL || '';
+  if (!userConfigured) {
+    if (provider === 'gemini' || (provider === 'auto' && !apiKey && env.GEMINI_API_KEY)) {
+      apiKey ||= env.GEMINI_API_KEY || ''; model ||= env.GEMINI_MODEL || '';
       provider = 'gemini';
-    } else if (provider === 'anthropic') apiKey = env.ANTHROPIC_API_KEY || '';
-    else if (provider === 'openai') { apiKey = env.OPENAI_API_KEY || ''; model ||= env.OPENAI_MODEL || 'gpt-5.5'; }
+    } else if (provider === 'anthropic') apiKey ||= env.ANTHROPIC_API_KEY || '';
+    else if (provider === 'openai') { apiKey ||= env.OPENAI_API_KEY || ''; model ||= env.OPENAI_MODEL || 'gpt-5.5'; }
   }
   if (provider === 'mock' || apiKey === 'demo') return { provider: 'mock', apiKey: '', model, baseUrl: '' };
   if (provider === 'auto') {

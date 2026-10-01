@@ -29,6 +29,8 @@ const envSchema = z.object({
   PANCAKE_CONVERSATION_LIMIT: z.coerce.number().int().positive().max(50).default(30),
   PANCAKE_MESSAGE_LIMIT: z.coerce.number().int().positive().max(50).default(30),
   AI_PROVIDER: z.enum(['auto', 'mock', 'claude', 'anthropic', 'gemini', 'openai', 'deepseek', 'groq', 'openrouter', 'mistral', 'xai', 'custom']).default('auto'),
+  AI_PROVIDER_API_KEY: z.string().optional().default(''),
+  AI_PROVIDER_MODEL: z.string().optional().default(''),
   ANTHROPIC_API_KEY: z.string().optional().default(''),
   GEMINI_API_KEY: z.string().optional().default(''),
   GEMINI_MODEL: z.string().optional().default(''),
@@ -85,12 +87,6 @@ export const config = {
   allowDemoMode: truthyFlag(env.ALLOW_DEMO_MODE),
   ai: {
     provider: env.AI_PROVIDER,
-    anthropicApiKey: env.ANTHROPIC_API_KEY,
-    geminiApiKey: env.GEMINI_API_KEY,
-    geminiModel: env.GEMINI_MODEL || '',
-    openaiApiKey: env.OPENAI_API_KEY || env.AI_API_KEY || '',
-    openaiModel: env.OPENAI_MODEL || env.AI_MODEL || '',
-    openaiBaseUrl: env.OPENAI_BASE_URL || env.AI_BASE_URL || '',
     knowledgeDir: resolveBackendPath(env.AI_KNOWLEDGE_DIR || '../data')
   }
 };

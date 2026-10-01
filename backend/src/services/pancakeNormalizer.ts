@@ -69,6 +69,10 @@ export function normalizeMessage(raw: unknown, conversationId: string): ChatMess
 
 function normalizeSender(message: Record<string, unknown>, senderRaw: unknown): MessageSender {
   const senderRecord = asRecord(senderRaw);
+  // Pancake INBOX messages use the same type for both directions. The sender
+  // ID equals page_id for outgoing messages, including automated page replies.
+  if (message.page_id != null && senderRecord.id != null &&
+      String(message.page_id) === String(senderRecord.id)) return 'staff';
   const rawType = String(
     firstDefined(message.sender_type, message.from_type, message.type, senderRecord.type, '')
   ).toLowerCase();
