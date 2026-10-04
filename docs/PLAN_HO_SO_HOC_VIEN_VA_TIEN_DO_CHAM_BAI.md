@@ -4,6 +4,8 @@ Ngày lập: 21/09/2026; bổ sung yêu cầu theo dõi nhiều lỗi qua nhiề
 
 ## 1. Mục tiêu và hiện trạng
 
+Phần hiện trạng bên dưới mô tả thời điểm lập kế hoạch. Tiến độ giao diện web và kiểm thử cập nhật ngày 04/10/2026 nằm ở mục 11.
+
 Mỗi học viên cần một hồ sơ ngắn, có căn cứ, để người trực biết cách xưng hô, lưu ý hiện hành, biến cố liên quan, bài đang tập, lỗi kỹ thuật trước đây và tiến độ sửa lỗi. API phải trả hồ sơ nhanh mà không phân tích lại toàn bộ lịch sử ở mỗi lần tạo gợi ý.
 
 Hiện có `student_contexts` trong SQLite, khóa `(page_id, student_id)`, chứa profile/memories/custom fields dạng JSON và revision chống sửa chồng. Web và widget đã đọc/sửa phần này. Nhưng `/api/suggestions` chưa lấy hồ sơ đã lưu để đưa vào prompt: `studentId` và `contextRevision` chỉ được ghi vào log generation. Chế độ chấm bài chỉ nhận `teacherInput` và lịch sử tin nhắn, chưa có định danh lượt nhận xét. Danh sách tin Pancake được lấy theo trang, mặc định web 30 tin, API tối đa 50 tin mỗi lần; không có tiến trình đồng bộ lịch sử và liên kết bài tập. Vì vậy chưa thể suy ra số lần lặp hoặc số phiên trả bài trên toàn lịch sử một cách đáng tin.
@@ -128,3 +130,29 @@ Web và widget nên dùng chung API. Giao diện chấm bài có “Bài đang t
 4. Theo dõi đồng thời nhiều lỗi lặp ở các tin nhắn/thời điểm khác nhau; hiển thị toàn bộ lỗi, lỗi gần nhất, lỗi chưa sửa/chưa xác nhận đã sửa và cho xem tóm tắt hoặc nguyên văn có nguồn.
 
 Giả định kỹ thuật: tiếp tục dùng SQLite trên một máy và đồng bộ lịch sử tăng dần; chỉ cân nhắc PostgreSQL khi triển khai nhiều instance cùng ghi hoặc số liệu đo tải chứng minh cần chuyển. Cần xác minh giới hạn phân trang và độ ổn định ID tin nhắn của Pancake trong môi trường thật trước khi triển khai backfill. Các ngưỡng hiệu năng, thời gian lưu tin nguồn và quy tắc kết thúc một bài sẽ được chốt từ dữ liệu vận hành và bài kiểm thử nghiệp vụ.
+
+## 11. Cập nhật giao diện web — 04/10/2026
+
+| Công việc | Cách thao tác trên web |
+| --- | --- |
+| Xác định học viên | Tìm/chọn hoặc tạo học viên; tài khoản dùng chung có phần kiểm tra người sở hữu từng tin. Chuyển học viên xóa ngữ cảnh chấm bài cũ. |
+| Bài đang tập | Thẻ bài có trạng thái, mốc có căn cứ và lượt trả bài; thêm/sửa/hoàn thành trong hộp thoại. Bấm “Chấm bài này” để chọn sẵn bài. |
+| Chấm bài | Chọn tin nộp và bài → nhập nhận xét giáo viên → xem gợi ý → xác nhận đã gửi. Soạn lại cùng yêu cầu không tăng lượt; bản nháp chưa đánh dấu tin đã trả bài. |
+| Lỗi kỹ thuật | Lọc lỗi cần theo dõi/gần đây/tất cả; mở lịch sử ngay trên thẻ, xem nguyên văn theo từng lần xuất hiện và cách sửa gần nhất; duyệt, bổ sung nguồn, gộp/tách hoặc xác nhận đã sửa. |
+| Ghi nhớ | Thêm/sửa theo loại, hiệu lực và quyền dùng trong gợi ý; lọc còn hiệu lực/hết hiệu lực/lưu trữ; xử lý xung đột và duyệt dữ liệu cũ. |
+| Đề xuất AI | Xem nguồn, chỉnh nội dung trước khi duyệt hoặc từ chối. |
+| Kiểm tra căn cứ | Mở và làm nổi bật tin nguồn đã lưu, kể cả hội thoại không còn trong danh sách mới nhất; lỗi thao tác có mã tra cứu trong icon bug. |
+
+Các sửa backend đi kèm: giữ đúng học viên của tin lịch sử sau khi khởi động lại; phân trang bằng chứng theo từng lần xuất hiện; cập nhật số ngày khi sang ngày mới; giữ mốc hoàn thành khi sửa bài; duyệt đề xuất dùng đúng tên người nói; chỉ tính tin đã trả bài sau khi xác nhận gửi.
+
+Đã kiểm tra thao tác web bằng Chrome với SQLite tạm và AI phản hồi cố định: tạo/sửa bài, chọn nguồn đúng học viên, soạn lại không trùng lượt, xác nhận gửi, ghi nhớ riêng tư/lưu trữ/khôi phục/hết hiệu lực, căn cứ giáo viên/chống trùng/xác nhận sửa, sửa và duyệt đề xuất, mở nguồn ngoài danh sách mới nhất và đổi học viên. Bộ kiểm thử backend bổ sung kiểm tra các lỗi dữ liệu kể trên.
+
+Còn chờ nghiệm thu: API Pancake thật và backfill lịch sử thật; chất lượng AI trên hội thoại thật; số liệu tải/độ trễ và triển khai nhiều instance. Chưa có bằng chứng cần thay SQLite cho mô hình một máy hiện tại.
+
+Cập nhật ô chọn: dropdown trên hồ sơ và chấm bài hỗ trợ tìm kiếm không dấu, bàn phím và danh sách tự chọn hướng mở. Ô học viên cho phép tạo và liên kết hồ sơ; ô bài tập cho phép thêm ngay trong luồng ghi nhận bài nộp hoặc chấm bài. Đã kiểm tra chọn và lưu các mục mới qua UI với dữ liệu giả lập trên desktop/mobile.
+
+Tối ưu hồ sơ theo hội thoại: mở chat tự đọc hồ sơ đã gắn; chat chưa có hồ sơ tạo hồ sơ cho đúng tài khoản hiện tại, dùng lại liên kết đã xác nhận nếu cùng customer và chỉ có một người. Không ghép theo tên. Tài khoản có nhiều học viên hoặc lịch sử chưa rõ vẫn cần xác nhận một lần. Bài chờ nhận xét được đưa lên đầu, ghi chú có thao tác nhanh, chi tiết thống kê và điều chỉnh liên kết nằm trong mục thu gọn.
+
+Hướng dẫn thao tác: các mục chính của web có nút `?` giải thích cách lưu và dùng thông tin. Thuộc tính dạng danh sách cho tìm hoặc thêm lựa chọn trực tiếp; backend lưu lựa chọn và giá trị trong cùng một lần cập nhật, chống trùng không phân biệt hoa/thường. “Ai nhập thông tin?” hiện là nhân viên nhập/xác nhận; các cấu hình AI tự điền cũ chưa có luồng thực thi và được ghi rõ trong UI. Khi nhân viên bật quyền dùng cho AI, giá trị thuộc tính đã lưu được đưa vào ngữ cảnh gợi ý chat, không dùng để khẳng định lỗi hiện tại lúc chấm bài.
+
+Lối tắt “＋ Thuộc tính” nằm ngay đầu tab Hồ sơ, mở biểu mẫu tạo thuộc tính và cuộn tới đúng vị trí trên desktop/mobile. Hướng dẫn `?` mô tả tên, kiểu, quyền dùng trong gợi ý, cách chọn nguồn và các bước chấm bài.

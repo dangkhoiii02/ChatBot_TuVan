@@ -190,12 +190,11 @@ export function decideProposal(input:{pageId:string;studentId:string;proposalId:
       case 'issue': {
         const title=input.title?.trim()||text(payload.title);
         if(!title) throw new HttpError(400,'Đề xuất lỗi cần tên lỗi.','PROPOSAL_INVALID');
-        const source=sourceMessageId&&sourceConversationId?db.prepare(`SELECT sender FROM conversation_message_cache
-          WHERE page_id=? AND conversation_id=? AND message_id=?`).get(input.pageId,sourceConversationId,sourceMessageId) as {sender:string}|undefined:undefined;
+        const source=sourceMessageId&&sourceConversationId?getCachedMessage(input.pageId,sourceConversationId,sourceMessageId):undefined;
         const sourceKind=source?.sender==='student'?'student_reported':'staff_confirmed';
         addIssueOccurrence({pageId:input.pageId,studentId:input.studentId,staffId:input.staffId,title,
-          summary:text(payload.summary)||content,occurredAt:String(row.source_occurred_at||row.created_at),sourceKind,
-          conversationId:sourceConversationId,messageId:sourceMessageId,speaker:source?.sender==='student'?'Học viên':'Giáo viên/nhân viên',verbatimText:String(row.source_text||content),
+          summary:input.content?.trim()||text(payload.summary)||content,occurredAt:String(row.source_occurred_at||row.created_at),sourceKind,
+          conversationId:sourceConversationId,messageId:sourceMessageId,speaker:source?.senderName||(source?.sender==='student'?'Học viên':'Giáo viên/nhân viên'),verbatimText:String(row.source_text||content),
           sourceKey:`proposal:${row.id}`});
         break;
       }

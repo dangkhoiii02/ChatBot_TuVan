@@ -558,11 +558,22 @@ function migrateReviewOccurrenceIndex(db:DatabaseSync) {
 }
 
 function migrateCurrentConversationLinks(db: DatabaseSync) {
+  // Earlier startups could recreate an open legacy link over an explicitly
+  // confirmed history. Remove only those synthetic open duplicates; closed
+  // legacy intervals still describe real earlier ownership and must survive.
+  db.prepare(`DELETE FROM student_conversation_link_history AS legacy
+    WHERE legacy.source='legacy_link' AND legacy.valid_to IS NULL
+      AND legacy.id LIKE 'link-history:%'
+      AND EXISTS (SELECT 1 FROM student_conversation_link_history confirmed
+        WHERE confirmed.page_id=legacy.page_id AND confirmed.conversation_id=legacy.conversation_id
+          AND confirmed.source<>'legacy_link')`).run();
   db.prepare(`INSERT OR IGNORE INTO student_conversation_link_history
     (id,page_id,customer_id,conversation_id,student_id,valid_from,valid_to,source,confirmed_by)
     SELECT 'link-history:'||l.page_id||':'||l.conversation_id||':'||l.linked_at,l.page_id,c.customer_id,
       l.conversation_id,l.student_id,l.linked_at,NULL,'legacy_link',l.linked_by
-    FROM student_conversation_links l LEFT JOIN conversations c ON c.id=l.conversation_id AND c.page_id=l.page_id`).run();
+    FROM student_conversation_links l LEFT JOIN conversations c ON c.id=l.conversation_id AND c.page_id=l.page_id
+    WHERE NOT EXISTS (SELECT 1 FROM student_conversation_link_history history
+      WHERE history.page_id=l.page_id AND history.conversation_id=l.conversation_id)`).run();
 }
 
 function ensureColumn(db: DatabaseSync, table: string, column: string, definition: string) {

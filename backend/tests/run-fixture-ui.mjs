@@ -10,6 +10,8 @@ const backendDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '.
 const frontendDir = path.resolve(backendDir, '../frontend');
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p0p1-fixture-ui-'));
 const sessionSecret = randomBytes(32).toString('hex');
+const backendPort = process.env.FIXTURE_BACKEND_PORT || '4000';
+const frontendPort = process.env.FIXTURE_FRONTEND_PORT || '5180';
 const isolatedEnv = {
   ...process.env,
   NODE_ENV: 'test',
@@ -20,11 +22,16 @@ const isolatedEnv = {
   PANCAKE_ACTIVE_USER_IDS: '',
   ALLOW_DEV_USER_HEADER: '0',
   ALLOW_DEMO_MODE: '1',
-  AI_PROVIDER: 'mock',
+  AI_PROVIDER: 'openai',
+  AI_PROVIDER_API_KEY: 'fixture-key-not-real',
+  AI_PROVIDER_MODEL: 'fixture-chat',
+  OPENAI_BASE_URL: 'https://fixture-ai.invalid/v1',
+  AI_BASE_URL: 'https://fixture-ai.invalid/v1',
   AI_API_KEY: '',
   OPENAI_API_KEY: '',
   GEMINI_API_KEY: '',
-  PORT: '4000'
+  PORT: backendPort,
+  CORS_ORIGINS: `http://127.0.0.1:${frontendPort},http://localhost:${frontendPort}`
 };
 
 try {
@@ -37,11 +44,11 @@ try {
   seedAdversarialFixtures(db);
   db.close();
   const sessionToken = issueAppSession({ userId: FIXTURE.staffId, pageId: FIXTURE.pageId });
-  const backend = spawn(process.execPath, ['dist/server.js'], { cwd: backendDir, env: isolatedEnv, stdio: 'inherit' });
+  const backend = spawn(process.execPath, ['tests/fixture-ai-server.mjs'], { cwd: backendDir, env: isolatedEnv, stdio: 'inherit' });
   const frontend = spawn(process.execPath, [path.join(frontendDir, 'node_modules/vite/bin/vite.js'),
-    '--host', '127.0.0.1', '--port', '5180', '--strictPort'], {
+    '--host', '127.0.0.1', '--port', frontendPort, '--strictPort'], {
     cwd: frontendDir,
-    env: { ...isolatedEnv, VITE_TEST_SESSION_TOKEN: sessionToken },
+    env: { ...isolatedEnv, VITE_API_BASE_URL: `http://127.0.0.1:${backendPort}`, VITE_TEST_SESSION_TOKEN: sessionToken },
     stdio: 'inherit'
   });
   let closing = false;
@@ -59,7 +66,7 @@ try {
   process.on('SIGTERM', () => stop());
   backend.on('exit', (code) => { if (!closing) stop(code || 1); });
   frontend.on('exit', (code) => { if (!closing) stop(code || 1); });
-  console.log(`Fixture UI: http://127.0.0.1:5180/ (fake ${FIXTURE.staffId}, ${FIXTURE.pageId}; temporary SQLite)`);
+  console.log(`Fixture UI: http://127.0.0.1:${frontendPort}/ (fake ${FIXTURE.staffId}, ${FIXTURE.pageId}; temporary SQLite)`);
 } catch (error) {
   fs.rmSync(tempDir, { recursive: true, force: true });
   throw error;

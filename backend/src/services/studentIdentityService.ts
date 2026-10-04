@@ -58,6 +58,19 @@ export function getConversationIdentity(pageId: string, conversationId: string) 
   };
 }
 
+// Opening a chat initializes its own profile once; names never select another
+// customer's profile. Explicit shared-account/history mappings remain authoritative.
+export function ensureConversationProfile(pageId:string, conversationId:string, staffId:string) {
+  const identity=getConversationIdentity(pageId,conversationId);
+  if(identity.student || identity.relatedStudents.length>1) return identity;
+  const db=getDatabase();
+  if(db.prepare('SELECT 1 FROM student_conversation_link_history WHERE page_id=? AND conversation_id=? LIMIT 1').get(pageId,conversationId)) return identity;
+  if(!identity.customerName.trim() || identity.customerName==='Chưa xác định') return identity;
+  return linkConversation({pageId,conversationId,staffId,
+    ...(identity.relatedStudents.length===1 ? {studentId:String((identity.relatedStudents[0] as {id:string}).id)} : {newStudentName:identity.customerName.slice(0,200)}),
+    initialHistoryFrom:'1970-01-01T00:00:00.000Z', importLegacyContext:identity.legacyContextAvailable, linkSource:'conversation_default'});
+}
+
 export function requireLinkedStudent(pageId: string, conversationId: string) {
   getConversationForPage(pageId, conversationId);
   const row = getDatabase().prepare(`SELECT s.id,s.name,s.page_id,s.revision FROM student_conversation_links l
@@ -69,7 +82,7 @@ export function requireLinkedStudent(pageId: string, conversationId: string) {
 
 export function linkConversation(input: {
   pageId: string; conversationId: string; studentId?: string; newStudentName?: string;
-  staffId: string; importLegacyContext?: boolean;
+  staffId: string; importLegacyContext?: boolean; initialHistoryFrom?:string; linkSource?:'conversation_default';
 }) {
   const conversation = getConversationForPage(input.pageId, input.conversationId);
   const db = getDatabase();
@@ -93,8 +106,8 @@ export function linkConversation(input: {
         .run(now,input.pageId,input.conversationId);
       db.prepare(`INSERT INTO student_conversation_link_history
         (id,page_id,customer_id,conversation_id,student_id,valid_from,source,confirmed_by)
-        VALUES (?,?,?,?,?,?,'staff_confirmed',?)`)
-        .run(`link-history:${randomUUID()}`,input.pageId,conversation.customer_id,input.conversationId,studentId,now,input.staffId||'staff');
+        VALUES (?,?,?,?,?,?,?,?)`)
+        .run(`link-history:${randomUUID()}`,input.pageId,conversation.customer_id,input.conversationId,studentId,input.initialHistoryFrom||now,input.linkSource||'staff_confirmed',input.staffId||'staff');
     }
 
     db.prepare(`INSERT INTO student_conversation_links(page_id,conversation_id,student_id,linked_by,linked_at)
@@ -252,8 +265,18 @@ export function listCachedMessagesForStudent(pageId:string,conversationId:string
   return rows.reverse();
 }
 
-export function listConversationMessageStudents(pageId: string, conversationId: string) {
+export function listConversationMessageStudents(pageId: string, conversationId: string, messageIds?:string[]) {
   getConversationForPage(pageId, conversationId);
+  if(messageIds) return [...new Set(messageIds)].map((messageId)=>{
+    try {
+      const studentId=getEffectiveMessageStudent(pageId,conversationId,messageId);
+      return {messageId,studentId,studentName:getStudent(pageId,studentId).name};
+    } catch(error) {
+      if(error instanceof HttpError && error.code==='STUDENT_SELECTION_REQUIRED')
+        return {messageId,studentId:null,studentName:'Chưa xác định'};
+      throw error;
+    }
+  });
   return getDatabase().prepare(`SELECT l.message_id AS messageId,l.student_id AS studentId,s.name AS studentName
     FROM conversation_message_student_links l JOIN students s ON s.id=l.student_id
     WHERE l.page_id=? AND l.conversation_id=? ORDER BY l.linked_at DESC LIMIT 500`).all(pageId, conversationId);

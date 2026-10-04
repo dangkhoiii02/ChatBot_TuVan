@@ -18,7 +18,8 @@ import type {
   StudentFact,
   StudentIssue,
   IssueDetail,
-  StudentProposal
+  StudentProposal,
+  StudentReviewSession
 } from '../types';
 
 type JsonRecord = Record<string, unknown>;
@@ -104,6 +105,12 @@ export async function getConversationMessages(
   return data.items;
 }
 
+export async function getConversationSourceContext(conversationId:string,pageId:string,messageId:string) {
+  const query=new URLSearchParams({pageId,messageId});
+  return requestJson<{conversation:BackendConversationSummary;items:BackendChatMessage[]}>(
+    `/api/conversations/${encodeURIComponent(conversationId)}/source-context?${query}`);
+}
+
 export async function createSuggestions(input: {
   conversationId: string;
   studentId?: string;
@@ -156,6 +163,7 @@ export async function createTeacherReview(input: {
   assignmentTitle?: string;
   reviewSessionKey?: string;
   reviewSessionId?: string;
+  sourceMessageId?: string;
   provider?: string;
   baseUrl?: string;
   apiKey?: string;
@@ -183,6 +191,7 @@ export async function createTeacherReview(input: {
       assignmentTitle: input.assignmentTitle,
       reviewSessionKey: input.reviewSessionKey,
       reviewSessionId: input.reviewSessionId,
+      sourceMessageId: input.sourceMessageId,
       pronouns: input.pronouns,
       ...explicit,
       messages: (input.messages || []).map((message) => ({
@@ -203,14 +212,20 @@ export async function getConversationStudentLink(conversationId:string,pageId:st
     `/api/conversations/${encodeURIComponent(conversationId)}/student-link?${query.toString()}`,{signal});
 }
 
+export async function ensureConversationStudentProfile(conversationId:string,pageId:string,signal?:AbortSignal) {
+  return requestJson<{identity:StudentIdentity;students:StudentOption[]}>(`/api/conversations/${encodeURIComponent(conversationId)}/student-profile`,{
+    method:'POST',body:JSON.stringify({pageId}),signal});
+}
+
 export async function linkStudentToConversation(input:{conversationId:string;pageId:string;studentId?:string;newStudentName?:string;importLegacyContext?:boolean}) {
   return requestJson<{identity:StudentIdentity;students:StudentOption[]}>(`/api/conversations/${encodeURIComponent(input.conversationId)}/student-link`,{
     method:'POST',body:JSON.stringify(input)});
 }
 
-export type ConversationMessageStudentLink={messageId:string;studentId:string;studentName:string};
-export async function getConversationMessageStudents(conversationId:string,pageId:string,signal?:AbortSignal) {
+export type ConversationMessageStudentLink={messageId:string;studentId:string|null;studentName:string};
+export async function getConversationMessageStudents(conversationId:string,pageId:string,signal?:AbortSignal,messageIds?:string[]) {
   const query=new URLSearchParams({pageId});
+  if(messageIds)query.set('messageIds',messageIds.join(','));
   return requestJson<{items:ConversationMessageStudentLink[]}>(`/api/conversations/${encodeURIComponent(conversationId)}/student-messages?${query}`,{signal});
 }
 export async function linkConversationMessages(input:{conversationId:string;pageId:string;studentId:string;messageIds:string[];reassign?:boolean}) {
@@ -222,13 +237,27 @@ export async function getStudentSummary(studentId:string,signal?:AbortSignal) {
   return requestJson<StudentSummary>(`/api/students/${encodeURIComponent(studentId)}/summary`,{signal});
 }
 
-export async function createStudentFact(input:{studentId:string;kind:StudentFact['kind'];content:string;useInSuggestions:boolean;expiresAt?:string;
+export async function listStudentFacts(studentId:string) {
+  return requestJson<{items:StudentFact[]}>(`/api/students/${encodeURIComponent(studentId)}/facts?includeArchived=true`);
+}
+
+export async function listStudentReviews(studentId:string) {
+  return requestJson<{items:StudentReviewSession[]}>(`/api/students/${encodeURIComponent(studentId)}/review-sessions`);
+}
+
+export async function updateStudentSubmission(input:{studentId:string;submissionId:string;status:'pending'|'reviewed'|'ignored'}) {
+  return requestJson<{items:StudentSummary['submissions']}>(`/api/students/${encodeURIComponent(input.studentId)}/submissions/${encodeURIComponent(input.submissionId)}`,{
+    method:'PATCH',body:JSON.stringify(input)});
+}
+
+export async function createStudentFact(input:{studentId:string;kind:StudentFact['kind'];content:string;useInSuggestions:boolean;sensitivity?:'normal'|'private';expiresAt?:string;
   sourceText?:string;sourceMessageId?:string;sourceConversationId?:string}) {
   return requestJson<{items:StudentFact[]}>(`/api/students/${encodeURIComponent(input.studentId)}/facts`,{
     method:'POST',body:JSON.stringify(input)});
 }
 
-export async function updateStudentFact(input:{studentId:string;factId:string;content?:string;status?:'active'|'archived';expiresAt?:string|null;useInSuggestions?:boolean}) {
+export async function updateStudentFact(input:{studentId:string;factId:string;kind?:StudentFact['kind'];content?:string;status?:'active'|'archived';expiresAt?:string|null;useInSuggestions?:boolean;
+  sensitivity?:'normal'|'private';verificationStatus?:'confirmed'|'legacy_unverified';conflictResolution?:'keep_current'|'use_this'}) {
   return requestJson<{items:StudentFact[]}>(`/api/students/${encodeURIComponent(input.studentId)}/facts/${encodeURIComponent(input.factId)}`,{
     method:'PATCH',body:JSON.stringify(input)});
 }
@@ -238,7 +267,8 @@ export async function createStudentAssignment(input:{studentId:string;title:stri
     method:'POST',body:JSON.stringify(input)});
 }
 
-export async function updateStudentAssignment(input:{studentId:string;assignmentId:string;revision:number;status:'active'|'completed'|'unknown';completionEvidence?:string}) {
+export async function updateStudentAssignment(input:{studentId:string;assignmentId:string;revision:number;status?:'active'|'completed'|'unknown';completionEvidence?:string;
+  title?:string;startedAt?:string|null;startedSource?:string|null}) {
   return requestJson<{items:StudentSummary['assignments']}>(`/api/students/${encodeURIComponent(input.studentId)}/assignments/${encodeURIComponent(input.assignmentId)}`,{
     method:'PATCH',body:JSON.stringify(input)});
 }
@@ -250,8 +280,8 @@ export async function createIssueOccurrence(input:{studentId:string;title?:strin
     method:'POST',body:JSON.stringify(input)});
 }
 
-export async function getStudentIssueDetail(studentId:string,issueId:string) {
-  return requestJson<IssueDetail>(`/api/students/${encodeURIComponent(studentId)}/issues/${encodeURIComponent(issueId)}`);
+export async function getStudentIssueDetail(studentId:string,issueId:string,offset=0,limit=20) {
+  return requestJson<IssueDetail>(`/api/students/${encodeURIComponent(studentId)}/issues/${encodeURIComponent(issueId)}?offset=${offset}&limit=${limit}`);
 }
 
 export async function updateStudentOccurrence(input:{studentId:string;issueId:string;occurrenceId:string;revision:number;approved?:boolean;
@@ -261,7 +291,7 @@ export async function updateStudentOccurrence(input:{studentId:string;issueId:st
     {method:'PATCH',body:JSON.stringify(input)});
 }
 
-export async function updateStudentIssue(input:{studentId:string;issueId:string;revision:number;status:'active'|'needs_verification'|'resolved'|'recurred';statusEvidence:string}) {
+export async function updateStudentIssue(input:{studentId:string;issueId:string;revision:number;status?:'active'|'needs_verification'|'resolved'|'recurred';statusEvidence?:string;title?:string;summary?:string}) {
   return requestJson<{items:StudentIssue[]}>(`/api/students/${encodeURIComponent(input.studentId)}/issues/${encodeURIComponent(input.issueId)}`,{
     method:'PATCH',body:JSON.stringify(input)});
 }
@@ -291,7 +321,7 @@ export async function listStudentProposals(studentId:string) {
   return requestJson<{items:StudentProposal[]}>(`/api/students/${encodeURIComponent(studentId)}/proposals?status=pending`);
 }
 
-export async function decideStudentProposal(input:{studentId:string;proposalId:string;action:'accept'|'reject';content?:string}) {
+export async function decideStudentProposal(input:{studentId:string;proposalId:string;action:'accept'|'reject';content?:string;title?:string}) {
   return requestJson<{items:StudentProposal[]}>(`/api/students/${encodeURIComponent(input.studentId)}/proposals/${encodeURIComponent(input.proposalId)}/decision`,{
     method:'POST',body:JSON.stringify(input)});
 }
@@ -403,6 +433,7 @@ export async function updateStudentCustomField(input: {
   revision: number;
   fieldId: string;
   value?: string;
+  addOption?: string;
   useInSuggestions?: boolean;
   hidden?: boolean;
 }) {

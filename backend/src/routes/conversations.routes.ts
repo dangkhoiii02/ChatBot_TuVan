@@ -6,7 +6,7 @@ import { normalizeConversation, normalizeMessage } from '../services/pancakeNorm
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { HttpError } from '../utils/httpError.js';
 import { getDatabase } from '../db/index.js';
-import { getConversationForPage, getConversationIdentity, linkConversation, linkConversationMessages, listConversationMessageStudents, rememberConversations, rememberMessages } from '../services/studentIdentityService.js';
+import { ensureConversationProfile, getCachedMessage, getConversationForPage, getConversationIdentity, linkConversation, linkConversationMessages, listConversationMessageStudents, rememberConversations, rememberMessages } from '../services/studentIdentityService.js';
 import { assessHistoryPagination, enqueueHistoryBackfill } from '../services/historyBackfillService.js';
 
 export const conversationsRouter = Router();
@@ -118,6 +118,13 @@ conversationsRouter.get('/:conversationId/student-link', asyncHandler(async (req
   });
 }));
 
+conversationsRouter.post('/:conversationId/student-profile', asyncHandler(async (req,res)=>{
+  const {pageId}=z.object({pageId:z.string().trim().min(1).max(200)}).parse(req.body);
+  assertPageAccess(req,[pageId]);
+  const identity=ensureConversationProfile(pageId,req.params.conversationId,req.staffAuth?.userId||'staff');
+  res.json({identity,students:getStudentOptions(pageId)});
+}));
+
 conversationsRouter.post('/:conversationId/student-link', asyncHandler(async (req, res) => {
   const body = z.object({
     pageId: z.string().trim().min(1).max(200),
@@ -145,7 +152,35 @@ conversationsRouter.post('/:conversationId/student-messages/link', asyncHandler(
 conversationsRouter.get('/:conversationId/student-messages', asyncHandler(async (req,res)=>{
   const pageId=z.string().trim().min(1).max(200).parse(req.query.pageId);
   assertPageAccess(req,[pageId]);
-  res.json({items:listConversationMessageStudents(pageId,req.params.conversationId)});
+  const messageIds=req.query.messageIds===undefined?undefined:z.array(z.string().trim().min(1).max(200)).max(100)
+    .parse(z.string().max(20000).parse(req.query.messageIds).split(',').filter(Boolean));
+  res.json({items:listConversationMessageStudents(pageId,req.params.conversationId,messageIds)});
+}));
+
+// Evidence remains readable even when its conversation is outside the latest
+// Pancake list or the source message is older than the most recent page.
+conversationsRouter.get('/:conversationId/source-context', asyncHandler(async (req,res)=>{
+  const {pageId,messageId}=z.object({pageId:z.string().trim().min(1).max(200),messageId:z.string().trim().min(1).max(200)}).parse(req.query);
+  assertPageAccess(req,[pageId]);
+  const conversation=getConversationForPage(pageId,req.params.conversationId);
+  const source=getCachedMessage(pageId,conversation.id,messageId);
+  const db=getDatabase();
+  const before=db.prepare(`SELECT message_id AS id,sender,sender_name AS senderName,text,attachments_json,created_at AS createdAt
+    FROM conversation_message_cache WHERE page_id=? AND conversation_id=? AND created_at<=?
+    ORDER BY created_at DESC,message_id DESC LIMIT 15`).all(pageId,conversation.id,source.createdAt);
+  const after=db.prepare(`SELECT message_id AS id,sender,sender_name AS senderName,text,attachments_json,created_at AS createdAt
+    FROM conversation_message_cache WHERE page_id=? AND conversation_id=? AND created_at>?
+    ORDER BY created_at,message_id LIMIT 15`).all(pageId,conversation.id,source.createdAt);
+  const rows=[...before,...after] as Array<{id:string;sender:string;senderName:string|null;text:string;attachments_json:string;createdAt:string}>;
+  const items=rows.filter((item)=>item.id!==messageId).map(({attachments_json,...item})=>({...item,attachments:parseAttachments(attachments_json)}));
+  const sourceAttachments=db.prepare('SELECT attachments_json FROM conversation_message_cache WHERE page_id=? AND conversation_id=? AND message_id=?')
+    .get(pageId,conversation.id,messageId) as {attachments_json:string};
+  items.push({...source,id:messageId,senderName:source.senderName||null,attachments:parseAttachments(sourceAttachments.attachments_json)});
+  items.sort((a,b)=>getTime(a.createdAt)-getTime(b.createdAt));
+  const row=db.prepare('SELECT page_name,avatar_url,last_message,updated_at,unread_count FROM conversations WHERE id=? AND page_id=?')
+    .get(conversation.id,pageId) as {page_name:string|null;avatar_url:string|null;last_message:string;updated_at:string;unread_count:number};
+  res.json({conversation:{id:conversation.id,pageId,pageName:row.page_name||'',customerId:conversation.customer_id,
+    customerName:conversation.customer_name,avatarUrl:row.avatar_url||'',lastMessage:row.last_message,updatedAt:row.updated_at,unreadCount:row.unread_count,source:'pancake'},items});
 }));
 
 conversationsRouter.get(

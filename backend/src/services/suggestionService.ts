@@ -21,6 +21,7 @@ export type CreateSuggestionsInput = {
     studentName: string;
     revision: number;
     facts: Array<{ id: string; kind: string; content: string; sourceText?: string; sourceMessageId?: string; occurredAt?: string; expiresAt?: string }>;
+    attributes?: Array<{id:string;name:string;value:string}>;
     issueReferences: Array<{ id: string; title: string; status: string; lastOccurredAt?: string; latestPracticeAction?: string }>;
     historyCoverage: { status: string; oldestMessageAt?: string | null; lastSyncedAt?: string | null };
   };
@@ -89,6 +90,7 @@ export async function createSuggestions(input: CreateSuggestionsInput, options?:
             contextRevision: input.studentContext?.revision,
             contextVersion: input.studentContext ? `${input.studentContext.studentId}:${input.studentContext.revision}` : null,
             usedFactIds: promptFacts.map((fact) => fact.id),
+            usedAttributeIds: input.mode==='teacher_review' ? [] : input.studentContext?.attributes?.map((field)=>field.id)||[],
             referencedIssueIds: input.studentContext?.issueReferences.map((issue) => issue.id) || [],
             historyCoverage: input.studentContext?.historyCoverage || { status: 'unknown' },
             assignmentId: input.assignmentId || null,reviewSessionId: auditInput.reviewSessionId || null,

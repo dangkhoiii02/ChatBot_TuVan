@@ -1,4 +1,6 @@
-import React, { useRef, useState } from 'react';
+import { HelpTip } from './HelpTip';
+import { SearchSelect } from './SearchSelect';
+import React, { useEffect, useRef, useState } from 'react';
 import { Conversation, Suggestion, PronounPair, CustomField, ProfileField, MemoryItem, StudentIdentity, StudentOption, StudentSummary } from '../types';
 import { StudentLearningCard } from './StudentLearningCard';
 
@@ -10,9 +12,9 @@ export interface SuggestionPanelProps {
   onUseSuggestion: (content: string) => void;
   currentPronoun: PronounPair;
   onChangePronouns: (pair: PronounPair) => void;
-  onGradeAssignment: (reviewText: string, assignmentId?:string, assignmentTitle?:string, reviewSessionKey?:string) => Promise<string|void> | string | void;
+  onGradeAssignment: (reviewText: string, assignmentId?:string, assignmentTitle?:string, reviewSessionKey?:string, sourceMessageId?:string) => Promise<string|void> | string | void;
   onAddCustomField: (field: Omit<CustomField, 'id' | 'source'>) => Promise<void> | void;
-  onUpdateCustomField?: (id: string, changes: { value?: string; useInSuggestions?: boolean; hidden?: boolean }) => Promise<void> | void;
+  onUpdateCustomField?: (id: string, changes: { value?: string; addOption?: string; useInSuggestions?: boolean; hidden?: boolean }) => Promise<void> | void;
   onDeleteCustomField?: (id: string) => Promise<void> | void;
   onAcceptAiProfileSuggestion: (fieldKey: string, newValue: string) => void;
   onSaveMemory: (content: string, reason?: string) => Promise<void> | void;
@@ -56,7 +58,6 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
   onUpdateCustomField,
   onDeleteCustomField,
   onAcceptAiProfileSuggestion,
-  onSaveMemory,
   onDeleteMemory,
   onMemoryAction,
   onCloseMobile,
@@ -71,11 +72,14 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
   onSyncConversationHistory,
   onOpenEvidence,
 }) => {
+  const [attributesOpen, setAttributesOpen] = useState(false);
+  const attributesRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<AssistantTab>('suggestions');
   const [isPronounMenuOpen, setIsPronounMenuOpen] = useState(false);
   const [gradingInput, setGradingInput] = useState('');
   const [assignmentTitle,setAssignmentTitle]=useState('');
   const [assignmentId,setAssignmentId]=useState('');
+  const [reviewSourceMessageId,setReviewSourceMessageId]=useState('');
   const [reviewSessionId,setReviewSessionId]=useState<string|null>(null);
   const [reviewConfirmed,setReviewConfirmed]=useState(false);
   const reviewKeyRef=useRef<{conversation:string;input:string;assignment:string;key:string}|null>(null);
@@ -96,23 +100,25 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
   const [isAddingField, setIsAddingField] = useState(false);
   const [newFieldName, setNewFieldName] = useState('');
   const [newFieldType, setNewFieldType] = useState<'text' | 'number' | 'select'>('text');
-  const [newFieldFill, setNewFieldFill] = useState<'manual' | 'ai_extract' | 'ai_evaluate'>('manual');
-  const [newFieldUseInSug, setNewFieldUseInSug] = useState(true);
+  const [newFieldUseInSug, setNewFieldUseInSug] = useState(false);
   const [newFieldOptions, setNewFieldOptions] = useState('');
-  const [newFieldCriteria, setNewFieldCriteria] = useState('');
 
-  // New Memory State
-  const [isAddingMemory, setIsAddingMemory] = useState(false);
-  const [newMemoryContent, setNewMemoryContent] = useState('');
-  const [newMemoryReason, setNewMemoryReason] = useState('');
+  useEffect(() => {
+    setGradingInput(''); setAssignmentTitle(''); setAssignmentId('');
+    setReviewSourceMessageId('');
+    setReviewSessionId(null); setReviewConfirmed(false); setGradingError('');
+    setIsGradingLoading(false); reviewKeyRef.current = null;
+    setIsPronounMenuOpen(false);
+  }, [conversation?.id, studentIdentity?.student?.id]);
+  const gradingScope = useRef('');
+  gradingScope.current = `${conversation?.id || ''}:${studentIdentity?.student?.id || ''}`;
 
   if (!conversation) {
     return (
-      <aside className="suggestion-panel empty">
+      <aside className="suggestion-panel assistant-panel-v2 empty">
         <div className="empty-suggestion-placeholder">
           <div className="empty-assistant-icon">🤖</div>
           <h3>Trợ lý Thầy Minh AI</h3>
-          <p>Chọn một học viên để xem phân tích ngữ cảnh và các câu gợi ý phản hồi.</p>
           <p>Chọn một học viên để xem hồ sơ, việc cần làm tiếp theo và các câu trả lời tối ưu.</p>
         </div>
       </aside>
@@ -147,25 +153,18 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
       setFormError('Field lựa chọn cần ít nhất một option, ngăn cách bằng dấu phẩy.');
       return;
     }
-    if (newFieldFill === 'ai_evaluate' && !newFieldCriteria.trim()) {
-      setFormError('Field AI đánh giá cần mô tả tiêu chí.');
-      return;
-    }
-
     setFormError('');
     try {
       await onAddCustomField({
         name: newFieldName.trim(),
         type: newFieldType,
-        fillMode: newFieldFill,
+        fillMode: 'manual',
         useInSuggestions: newFieldUseInSug,
         value: '',
-        options: newFieldType === 'select' ? options : undefined,
-        evidence: newFieldFill === 'ai_evaluate' ? newFieldCriteria.trim() : undefined
+        options: newFieldType === 'select' ? options : undefined
       });
       setNewFieldName('');
       setNewFieldOptions('');
-      setNewFieldCriteria('');
       setIsAddingField(false);
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Không lưu được custom field.');
@@ -175,42 +174,31 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
   const handleGenerateGrading = async () => {
     if (!gradingInput.trim()) return;
     let request=reviewKeyRef.current;
-    const assignmentSelection=assignmentId||`new:${assignmentTitle.trim()}`;
+    const assignmentSelection=`${assignmentId||`new:${assignmentTitle.trim()}`}:source:${reviewSourceMessageId}`;
     if(!request||request.conversation!==conversation.id||request.input!==gradingInput.trim()||request.assignment!==assignmentSelection) {
       request={conversation:conversation.id,input:gradingInput.trim(),assignment:assignmentSelection,key:crypto.randomUUID()};
       reviewKeyRef.current=request;
     }
+    const scope = gradingScope.current;
     setIsGradingLoading(true);
     setGradingError('');
     try {
-      const sessionId=await onGradeAssignment(gradingInput,assignmentId||undefined,assignmentId?undefined:assignmentTitle.trim()||undefined,request.key);
-      if(sessionId) {setReviewSessionId(sessionId);setReviewConfirmed(false);}
+      const sessionId=await onGradeAssignment(gradingInput,assignmentId||undefined,assignmentId?undefined:assignmentTitle.trim()||undefined,request.key,reviewSourceMessageId||undefined);
+      if(scope === gradingScope.current && sessionId) {setReviewSessionId(sessionId);if(sessionId !== reviewSessionId)setReviewConfirmed(false);}
     } catch (error) {
-      setGradingError(error instanceof Error ? error.message : 'Không tạo được nhận xét.');
+      if(scope === gradingScope.current) setGradingError(error instanceof Error ? error.message : 'Không tạo được nhận xét.');
     } finally {
-      setIsGradingLoading(false);
+      if(scope === gradingScope.current) setIsGradingLoading(false);
     }
   };
 
   const handleConfirmReview=async()=>{
     if(!reviewSessionId||!onConfirmReviewSession)return;
-    setGradingError('');
-    try {await onConfirmReviewSession(reviewSessionId);setReviewConfirmed(true);}
-    catch(error){setGradingError(error instanceof Error?error.message:'Không xác nhận được lượt trả bài.');}
-  };
-
-  const handleAddMemorySubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMemoryContent.trim()) return;
-    setFormError('');
-    try {
-      await onSaveMemory(newMemoryContent.trim(), newMemoryReason.trim() || undefined);
-      setNewMemoryContent('');
-      setNewMemoryReason('');
-      setIsAddingMemory(false);
-    } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'Không lưu được ghi nhớ.');
-    }
+    const scope = gradingScope.current;
+    setGradingError(''); setIsGradingLoading(true);
+    try {await onConfirmReviewSession(reviewSessionId);if(scope === gradingScope.current) setReviewConfirmed(true);}
+    catch(error){if(scope === gradingScope.current) setGradingError(error instanceof Error?error.message:'Không xác nhận được lượt trả bài.');}
+    finally {if(scope === gradingScope.current) setIsGradingLoading(false);}
   };
 
   const profile = conversation.profile;
@@ -225,6 +213,8 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
   const customFields: CustomField[] = profile?.customFields || [];
   const memories: MemoryItem[] = conversation.memories || [];
   const assignmentOptions = conversation.assignmentOptions || [];
+  const currentGradingSelection = `${assignmentId || `new:${assignmentTitle.trim()}`}:source:${reviewSourceMessageId}`;
+  const gradingDraftChanged = Boolean(reviewKeyRef.current && (reviewKeyRef.current.input !== gradingInput.trim() || reviewKeyRef.current.assignment !== currentGradingSelection));
 
   return (
     <aside className="suggestion-panel assistant-panel-v2">
@@ -238,6 +228,7 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
                 type="button"
                 className="btn-quick-pronoun"
                 onClick={() => setIsPronounMenuOpen(!isPronounMenuOpen)}
+                aria-expanded={isPronounMenuOpen}
                 title="Bấm để đổi nhanh cặp xưng hô"
               >
                 <span className="pronoun-label">Xưng hô:</span>
@@ -268,6 +259,7 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
                 type="button"
                 className="btn-close-mobile-assistant"
                 onClick={onCloseMobile}
+                aria-label="Đóng trợ lý"
                 title="Đóng trợ lý"
               >
                 ✕
@@ -275,28 +267,32 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
             )}
           </div>
         </div>
-        <div className="student-badge-cluster">
-            <span className={`data-status-pill status-${profile?.dataStatus || 'unclear'}`}>
+        {(isContextLoading || isSavingContext || !studentSummary || studentSummary.facts.some(fact => fact.conflictStatus === 'pending')) && <div className="student-badge-cluster">
+            <span className={`data-status-pill status-${studentSummary ? 'saved' : profile?.dataStatus || 'unclear'}`}>
               {isContextLoading
                 ? 'Đang tải hồ sơ'
                 : isSavingContext
                   ? 'Đang lưu'
                   : studentIdentity?.status === 'needs_selection'
                     ? 'Chưa liên kết hồ sơ'
+                  : studentSummary?.facts.some((fact) => fact.conflictStatus === 'pending')
+                    ? 'Cần kiểm tra mâu thuẫn'
+                  : studentSummary
+                    ? 'Hồ sơ sẵn sàng'
                   : profile?.dataStatus === 'conflict'
                     ? 'Có mâu thuẫn'
                     : profile?.dataStatus === 'ai_suggested'
                       ? 'AI đề xuất'
                       : profile?.dataStatus === 'saved'
                         ? 'Đã lưu'
-                        : 'Chưa có dữ kiện xác nhận'}
+                        : 'Chưa tải được hồ sơ'}
             </span>
             {studentIdentity?.status === 'needs_selection' && (
               <button type="button" className="student-link-shortcut" onClick={() => setActiveTab('profile')}>
                 Tạo/liên kết hồ sơ
               </button>
             )}
-        </div>
+        </div>}
 
         {profile?.nextAction && profile.nextAction !== 'Chưa xác định' && (
           <div className="pinned-next-action">
@@ -307,47 +303,23 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
       </div>
 
       {/* 2. 4 TABS NAVIGATION */}
-      <div className="assistant-tabs-nav" role="tablist" aria-label="Chức năng trợ lý">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'suggestions'}
-          className={`tab-btn ${activeTab === 'suggestions' ? 'active' : ''}`}
-          onClick={() => setActiveTab('suggestions')}
-        >
-          Gợi ý{suggestions.length > 0 ? ` · ${suggestions.length}` : ''}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'profile'}
-          className={`tab-btn ${activeTab === 'profile' ? 'active' : ''}`}
-          onClick={() => setActiveTab('profile')}
-        >
-          Hồ sơ {profile?.dataStatus === 'conflict' ? '⚠️' : ''}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'grading'}
-          className={`tab-btn ${activeTab === 'grading' ? 'active' : ''}`}
-          onClick={() => setActiveTab('grading')}
-        >
-          Chấm bài
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'memories'}
-          className={`tab-btn ${activeTab === 'memories' ? 'active' : ''}`}
-          onClick={() => setActiveTab('memories')}
-        >
-          Ghi nhớ{memories.length > 0 ? ` · ${memories.length}` : ''}
-        </button>
+      <div className="assistant-tabs-nav" role="tablist" aria-label="Chức năng trợ lý" onKeyDown={(event) => {
+        const tabs = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+        const index = tabs.indexOf(document.activeElement as HTMLButtonElement);
+        const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1;
+        if(next >= 0) {event.preventDefault(); tabs[next].click(); tabs[next].focus();}
+      }}>
+        {([
+          ['suggestions', `Gợi ý${suggestions.length ? ` · ${suggestions.length}` : ''}`],
+          ['profile', 'Hồ sơ'], ['grading', 'Chấm bài'],
+          ['memories', `Ghi nhớ${studentSummary?.facts.length ? ` · ${studentSummary.facts.length}` : ''}`]
+        ] as const).map(([tab, label]) => <button key={tab} type="button" role="tab" id={`assistant-tab-${tab}`}
+          aria-selected={activeTab === tab} aria-controls={`assistant-content-${tab}`} tabIndex={activeTab === tab ? 0 : -1}
+          className={`tab-btn ${activeTab === tab ? 'active' : ''}`} onClick={() => setActiveTab(tab)}>{label}</button>)}
       </div>
 
       {/* 3. TAB CONTENT AREA */}
-      <div className="assistant-tab-body">
+      <div key={`${conversation.id}:${activeTab}`} className="assistant-tab-body" role="tabpanel" id={`assistant-content-${activeTab}`} aria-labelledby={`assistant-tab-${activeTab}`} tabIndex={0}>
         {/* TAB 1: GỢI Ý */}
         {activeTab === 'suggestions' && (
           <div className="tab-pane pane-suggestions">
@@ -372,7 +344,7 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
             )}
 
             <div className="pane-action-bar">
-              <div className="pane-action-heading"><strong>Gợi ý trả lời</strong><small>AI soạn 3 phương án để bạn duyệt.</small></div>
+              <div className="pane-action-heading"><strong>Gợi ý trả lời <HelpTip title="Gợi ý trả lời">AI đọc tin mới của học viên và hồ sơ đã xác nhận, sau đó soạn ba câu để bạn chọn hoặc sửa. Hãy kiểm tra rồi tự gửi qua Pancake.</HelpTip></strong><small>AI soạn 3 phương án để bạn duyệt.</small></div>
               <button
                 type="button"
                 className="btn-create-suggestion"
@@ -459,6 +431,8 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
         {activeTab === 'profile' && (
           <div className="tab-pane pane-profile">
             <StudentLearningCard
+              key={`${conversation.id}:${studentIdentity?.student?.id || "unlinked"}:profile`}
+              loading={isContextLoading}
               identity={studentIdentity||null}
               students={studentOptions}
               summary={studentSummary||null}
@@ -468,17 +442,21 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
               onOpenEvidence={onOpenEvidence}
               onRefresh={onRefreshStudentSummary|| (async()=>null)}
               onSyncHistory={onSyncConversationHistory|| (async()=>null)}
+              onStartReview={(id,sourceId) => {setAssignmentId(id || ""); setAssignmentTitle("");
+                setReviewSourceMessageId(sourceId || studentSummary?.submissions.find((item) => item.assignmentId === id && item.conversationId === conversation.id)?.sourceMessageId || ""); setActiveTab("grading");}}
+              onManageAttributes={() => { setAttributesOpen(true); setIsAddingField(true); requestAnimationFrame(() => attributesRef.current?.scrollIntoView({behavior:'smooth',block:'start'})); }}
             />
             {studentIdentity?.status==='linked' ? <>
-            <details className="profile-advanced-details">
-              <summary>Thông tin bổ sung và trường tùy biến</summary>
+            <div className="profile-attributes-heading" ref={attributesRef}><span>Thuộc tính bổ sung <HelpTip title="Thuộc tính bổ sung">Tạo mục thông tin riêng cho học viên đang chat, ví dụ “Ca học” hoặc “Trình độ”. Chọn dạng Danh sách để có các lựa chọn. Trong ô chọn, gõ giá trị chưa có rồi bấm “Thêm lựa chọn”; giá trị mới được lưu vào danh sách của thuộc tính này.</HelpTip></span><button type="button" className="learning-text-button" onClick={() => { setAttributesOpen(true); setIsAddingField(true); }}>＋ Thêm thuộc tính</button></div>
+            <details className="profile-advanced-details" open={attributesOpen} onToggle={event => { setAttributesOpen(event.currentTarget.open); if (!event.currentTarget.open) setIsAddingField(false); }}>
+              <summary>Xem thuộc tính ({customFields.length})</summary>
             <div className="profile-section-header">
-              <span className="section-title">Thông tin bổ sung</span>
-              <span className="section-hint">Dữ liệu cũ và trường tùy biến</span>
+              <span className="section-title">Ghi chú từ hồ sơ cũ</span>
+              <span className="section-hint">Chỉ hiển thị khi có dữ liệu</span>
             </div>
 
             <div className="profile-fields-list">
-              {defaultFields.map((field) => (
+              {defaultFields.filter(field => !['recipient','sender'].includes(field.key) && field.source !== 'empty' && Boolean(field.value)).map((field) => (
                 <div key={field.key} className={`profile-field-card ${field.source === 'conflict' ? 'field-conflict' : ''}`}>
                   <div className="field-top-row">
                     <span className="field-label">{field.label}</span>
@@ -524,20 +502,20 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
             {/* Trường tùy biến (Custom Fields) */}
             <div className="custom-fields-section">
               <div className="custom-fields-header">
-                <span className="section-title">Trường tùy biến ({customFields.length})</span>
+                <span className="section-title">Thuộc tính đã tạo ({customFields.length})</span>
                 <button
                   type="button"
                   className="btn-add-custom-field"
                   onClick={() => setIsAddingField(!isAddingField)}
                 >
-                  {isAddingField ? '✕ Đóng' : '+ Thêm trường'}
+                  {isAddingField ? '✕ Đóng' : '+ Thêm thuộc tính'}
                 </button>
               </div>
 
               {isAddingField && (
                 <form className="add-field-form" onSubmit={handleCreateCustomField}>
                   <div className="form-group">
-                    <label>Tên trường:</label>
+                    <label>Tên thuộc tính <HelpTip title="Tên thuộc tính">Đặt tên thông tin bạn muốn theo dõi, ví dụ “Ca học ưa thích”. Đây là tên ô thông tin, không phải giá trị như “Tối thứ 7”.</HelpTip></label>
                     <input
                       type="text"
                       className="form-input"
@@ -550,43 +528,28 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
 
                   <div className="form-row-2">
                     <div className="form-group">
-                      <label>Kiểu dữ liệu:</label>
-                      <select
+                      <label>Dạng thông tin <HelpTip title="Dạng thông tin">Văn bản: tên hoặc ghi chú. Số: tuổi, số buổi học. Danh sách: các lựa chọn như “Sáng”, “Chiều”. Bạn có thể bổ sung lựa chọn mới khi sử dụng, không phải tạo lại thuộc tính.</HelpTip></label>
+                      <SearchSelect
                         className="form-select"
                         value={newFieldType}
                         onChange={(e) => setNewFieldType(e.target.value as any)}
                       >
                         <option value="text">Văn bản (Text)</option>
                         <option value="number">Số (Number)</option>
-                        <option value="select">Lựa chọn (Select)</option>
-                      </select>
+                        <option value="select">Danh sách lựa chọn</option>
+                      </SearchSelect>
                     </div>
 
                     <div className="form-group">
-                      <label>Cách điền dữ liệu:</label>
-                      <select
-                        className="form-select"
-                        value={newFieldFill}
-                        onChange={(e) => setNewFieldFill(e.target.value as any)}
-                      >
-                        <option value="manual">Tự điền tay</option>
-                        <option value="ai_extract">AI tự bóc tách tin nhắn</option>
-                        <option value="ai_evaluate">AI tự đánh giá</option>
-                      </select>
+                      <label>Ai nhập thông tin? <HelpTip title="Cách điền thuộc tính">Bạn tự nhập hoặc chọn giá trị rồi lưu. AI chưa tự điền thuộc tính này từ tin nhắn. Trong mục Đề xuất, AI có thể gợi ý ghi nhớ hoặc lỗi có nguồn để bạn duyệt. Nếu bật “Dùng cho AI”, AI đọc giá trị bạn đã lưu khi soạn gợi ý chat.</HelpTip></label>
+                      <p className="field-help-note">Nhân viên nhập và xác nhận. AI chưa tự điền thuộc tính.</p>
                     </div>
                   </div>
 
                   {newFieldType === 'select' && (
                     <div className="form-group">
-                      <label>Danh sách lựa chọn (ngăn cách bằng dấu phẩy):</label>
+                      <label>Lựa chọn ban đầu (cách nhau bằng dấu phẩy) <HelpTip title="Lựa chọn ban đầu">Nhập vài giá trị để bắt đầu, ví dụ “Sáng, Chiều”. Sau này bạn có thể gõ giá trị mới ngay trong ô chọn của thuộc tính và bấm “Thêm lựa chọn”.</HelpTip></label>
                       <input className="form-input" value={newFieldOptions} onChange={(e) => setNewFieldOptions(e.target.value)} placeholder="Nhanh, Vừa, Chậm" />
-                    </div>
-                  )}
-
-                  {newFieldFill === 'ai_evaluate' && (
-                    <div className="form-group">
-                      <label>Tiêu chí AI đánh giá:</label>
-                      <textarea className="form-textarea" rows={2} value={newFieldCriteria} onChange={(e) => setNewFieldCriteria(e.target.value)} placeholder="Mô tả rõ dữ kiện nào được dùng để đánh giá" />
                     </div>
                   )}
 
@@ -599,13 +562,13 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
                         checked={newFieldUseInSug}
                         onChange={(e) => setNewFieldUseInSug(e.target.checked)}
                       />
-                      <span>Cho phép AI sử dụng trường này khi sinh câu trả lời</span>
+                      <span>Cho phép AI đọc giá trị đã lưu khi soạn gợi ý chat</span>
                     </label>
                   </div>
 
                   <div className="form-submit-row">
                     <button type="submit" className="btn-primary-small" disabled={isSavingContext}>
-                      {isSavingContext ? 'Đang lưu…' : 'Lưu trường'}
+                      {isSavingContext ? 'Đang lưu…' : 'Tạo thuộc tính'}
                     </button>
                     <button
                       type="button"
@@ -619,7 +582,7 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
               )}
 
               {customFields.length === 0 ? (
-                <div className="empty-field-note">Chưa có trường tùy biến nào được thêm.</div>
+                <div className="empty-field-note">Chưa có thuộc tính. Bấm “Thêm thuộc tính” để tạo mục thông tin bạn cần.</div>
               ) : (
                 <div className="custom-fields-list">
                   {customFields.filter((field) => !field.hidden).map((field) => (
@@ -635,255 +598,82 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
               )}
             </div>
             </details>
-            </> : <div className="empty-tab-note">Hãy chọn hoặc tạo hồ sơ học viên trước khi sửa ghi chú cũ.</div>}
+            </> : null}
           </div>
         )}
-        {/* TAB 3: CHẤM BÀI */}
+        {/* Chấm bài: chọn bài, nhập nhận xét hiện tại, duyệt rồi xác nhận gửi. */}
         {activeTab === 'grading' && (
-          <div className="tab-pane pane-grading">
-            <div className="grading-instruction-box">
-              <div className="instruction-icon">🎯</div>
-              <div className="instruction-content">
-                <strong>Chấm bài & Phản hồi kỹ thuật nhanh</strong>
-                <p>Nhập ngắn gọn lỗi kỹ thuật giáo viên nhận thấy. AI sẽ diễn đạt thành 3 câu nhận xét sư phạm chuẩn phong cách Thầy Minh.</p>
-              </div>
-            </div>
-
+          <div className="tab-pane pane-grading grading-workspace">
+            <div className="pane-action-heading"><strong>Chấm bài cho {studentIdentity?.student?.name || conversation.studentName}</strong><small>AI diễn đạt nhận xét; giáo viên xác nhận lỗi của bài hiện tại.</small></div>
+            {studentIdentity?.status !== 'linked' && <div className="grading-identity-warning"><p>Chưa liên kết học viên. AI chỉ dùng nhận xét bạn nhập; lượt trả bài chưa được lưu vào hồ sơ.</p><button type="button" className="learning-text-button" onClick={() => setActiveTab('profile')}>Liên kết hồ sơ học viên →</button></div>}
             <div className="grading-input-container">
-              {studentIdentity?.status!=='linked'&&<div className="learning-warning">Chưa chọn học viên; AI chỉ dùng nhận xét bạn nhập và nội dung hội thoại hiện tại.</div>}
-              {studentIdentity?.status==='linked'&&<>
-                <label className="grading-label">Bài đang tập (tuỳ chọn):</label>
-                <select className="grading-assignment-input" value={assignmentId} onChange={(event)=>setAssignmentId(event.target.value)}>
-                  <option value="">Bài mới hoặc chưa chọn</option>
-                  {studentSummary?.assignments.filter((assignment)=>assignment.status==='active').map((assignment)=><option key={assignment.id} value={assignment.id}>{assignment.title} · {assignment.id.slice(-8)}</option>)}
-                </select>
-                {!assignmentId&&<input className="grading-assignment-input" value={assignmentTitle} onChange={(event)=>setAssignmentTitle(event.target.value)} placeholder="Tên bài mới (để trống nếu chưa rõ)" />}
-                {(studentSummary?.unresolvedIssues.length||0)>0&&<div className="grading-history-reference"><b>Tham khảo lần trước — không tự tính là lỗi hiện tại</b>
-                  {studentSummary?.unresolvedIssues.slice(0,5).map((issue)=><span key={issue.id}>{issue.title}: {issue.latestPracticeAction||'chưa có cách sửa đã lưu'}</span>)}
-                  <small>Chỉ nội dung ở ô nhận xét giáo viên bên dưới được xem là lỗi của bài hiện tại.</small>
-                </div>}
-              </>}
-              <label className="grading-label">Ghi chú nhận xét của giáo viên:</label>
-              <textarea
-                className="grading-textarea"
-                placeholder="VD: Ô nhịp 16 ngón 2 bị trợt phím đen do cổ tay thấp. Nhắc tập kỹ thuật xoay cẳng tay (rotation) chậm lại với tempo 50..."
-                value={gradingInput}
-                onChange={(e) => setGradingInput(e.target.value)}
-                rows={3}
-              />
-              <button
-                type="button"
-                className="btn-generate-grading"
-                onClick={handleGenerateGrading}
-                disabled={!gradingInput.trim() || isGradingLoading}
-              >
-                {isGradingLoading ? (
-                  <>
-                    <span className="spinner-small" /> Đang tổng hợp lời nhận xét...
-                  </>
-                ) : (
-                  '⚡ AI soạn 3 phương án nhận xét'
-                )}
+              {studentIdentity?.status === 'linked' && <div className="grading-step">
+                <span className="grading-step-number">1</span><label htmlFor="grading-assignment" className="grading-label">Chọn bài đang tập <HelpTip title="Chọn bài đang tập">Chọn bài của học viên này. Nếu chưa có, nhập tên rồi bấm “Thêm bài”; bài mới được lưu khi tạo gợi ý thành công.</HelpTip></label>
+                <SearchSelect id="grading-assignment" className="grading-assignment-input" value={assignmentId || (assignmentTitle ? `new:${assignmentTitle}` : '')} onChange={(event) => { if (event.target.value.startsWith('new:')) { setAssignmentId(''); setAssignmentTitle(event.target.value.slice(4)); } else { setAssignmentId(event.target.value); setAssignmentTitle(''); } }}
+                  createLabel="Thêm bài" onCreate={(name) => { setAssignmentId(''); setAssignmentTitle(name); }} disabled={isGradingLoading}>
+                  <option value="">Chưa chọn bài / bài mới</option>
+                  {studentSummary?.assignments.filter((assignment) => assignment.status !== 'completed').map((assignment) => <option key={assignment.id} value={assignment.id}>{assignment.title} · {assignment.id.slice(-6)}</option>)}
+                  {!assignmentId && assignmentTitle && <option value={`new:${assignmentTitle}`}>Bài mới: {assignmentTitle}</option>}
+                </SearchSelect>
+                <p className="learning-muted">Tìm bài có sẵn hoặc gõ tên và chọn “Thêm bài”. Bài mới được lưu khi tạo gợi ý thành công.</p>
+                <div className="grading-new-assignment"><label htmlFor="grading-source">Tin nộp bài <HelpTip title="Tin nộp bài">Chọn tin học viên gửi bài để gắn nhận xét với đúng lần nộp. Nếu để mặc định, backend tìm tin mới nhất thuộc học viên đang chat.</HelpTip></label><SearchSelect id="grading-source" className="grading-assignment-input" value={reviewSourceMessageId} onChange={(event) => {
+                  setReviewSourceMessageId(event.target.value);
+                  const submission=studentSummary?.submissions.find((item) => item.sourceMessageId === event.target.value);
+                  if(submission?.assignmentId)setAssignmentId(submission.assignmentId);
+                }} disabled={isGradingLoading}>
+                  <option value="">Tin mới nhất thuộc học viên này</option>
+                  {studentSummary?.submissions.filter((item) => item.conversationId === conversation.id).map((item) => <option key={item.id} value={item.sourceMessageId}>{item.assignmentTitle || 'Chưa chọn bài'} · {new Date(item.submittedAt).toLocaleDateString('vi-VN')}</option>)}
+                  {reviewSourceMessageId && !studentSummary?.submissions.some((item) => item.sourceMessageId === reviewSourceMessageId) && <option value={reviewSourceMessageId}>Tin đã chọn cho lượt trả bài này</option>}
+                </SearchSelect></div>
+              </div>}
+              <div className="grading-step">
+                <span className="grading-step-number">{studentIdentity?.status === 'linked' ? '2' : '1'}</span><label htmlFor="grading-teacher-input" className="grading-label">Nhận xét giáo viên cho bài hiện tại <HelpTip title="Chấm bài bằng AI">Nhập lỗi và cách sửa giáo viên đã xác nhận, rồi bấm “Soạn 3 phương án nhận xét”. AI diễn đạt lại lời nhận xét, không tự xem video để kết luận lỗi. Kiểm tra nội dung, sao chép sang Pancake, gửi rồi xác nhận “Đã gửi”.</HelpTip></label>
+                <textarea id="grading-teacher-input" className="grading-textarea" placeholder="Ví dụ: Ô nhịp 16 ngón 2 trượt phím đen do cổ tay thấp. Dặn tập chậm với tempo 50…" value={gradingInput} onChange={(event) => setGradingInput(event.target.value)} rows={5} maxLength={2000} disabled={isGradingLoading} />
+                <small className="learning-muted">Ghi đúng lỗi và cách sửa giáo viên đã nhận xét. Lỗi cũ không tự trở thành lỗi hiện tại.</small>
+              </div>
+              {(studentSummary?.unresolvedIssues.length || 0) > 0 && <details className="grading-history-reference"><summary>Lỗi trước đây & cách sửa gần nhất ({studentSummary?.unresolvedIssues.length})</summary>
+                {studentSummary?.unresolvedIssues.slice(0, 5).map((issue) => <div key={issue.id}><b>{issue.title}</b><p>{issue.latestPracticeAction || 'Chưa có cách sửa đã lưu.'}</p></div>)}
+                <button type="button" className="learning-text-button" onClick={() => setActiveTab('profile')}>Xem đầy đủ căn cứ trong hồ sơ →</button>
+              </details>}
+              <button type="button" className="btn-generate-grading" onClick={handleGenerateGrading} disabled={!gradingInput.trim() || isGradingLoading || isContextLoading}>
+                {isGradingLoading ? <><span className="spinner-small" />Đang xử lý…</> : 'Soạn 3 phương án nhận xét'}
               </button>
-              {reviewSessionId&&!reviewConfirmed&&<div className="review-confirm-row"><small>Sau khi gửi nhận xét qua Pancake, xác nhận để tính đây là một lượt trả bài.</small>
-                <button type="button" className="btn-secondary" disabled={isGradingLoading} onClick={()=>void handleConfirmReview()}>Đã gửi nhận xét</button></div>}
-              {reviewConfirmed&&<div className="review-confirmed-note">✓ Lượt trả bài đã được xác nhận.</div>}
               {gradingError && <div className="inline-form-error" role="alert">{gradingError}</div>}
             </div>
-
             <div className="grading-options-stack">
-              <div className="options-title">Các phương án nhận xét chấm bài:</div>
-              {assignmentOptions.length === 0 ? (
-                <div className="empty-tab-note">
-                  Nhập nhận xét của bạn ở khung trên rồi bấm <strong>AI soạn lời nhận xét</strong> để tạo phương án.
-                </div>
-              ) : (
-                assignmentOptions.map((opt) => (
-                  <div key={opt.id} className="grading-card">
-                    <div className="grading-card-top">
-                      <span className="grading-tone-name">{opt.tone}</span>
-                    </div>
-                    <p className="grading-card-content">{opt.content}</p>
-
-                    {opt.usedFacts && (
-                      <div className="card-facts-row">
-                        <span className="fact-label">Trọng tâm:</span>
-                        {opt.usedFacts.map((f, i) => (
-                          <span key={i} className="fact-chip">
-                            ✓ {f}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="grading-card-footer">
-                      <button
-                        type="button"
-                        className="btn-apply-suggestion"
-                        onClick={() => onUseSuggestion(opt.content)}
-                      >
-                        👉 Dùng câu này
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
+              {gradingDraftChanged && <p className="learning-pending" role="status">Nhận xét hoặc bài đã thay đổi. Soạn lại để cập nhật các phương án bên dưới trước khi xác nhận gửi.</p>}
+              {assignmentOptions.length === 0 ? <div className="learning-empty"><b>Chưa có nhận xét được soạn</b><p>Nhập nhận xét giáo viên ở trên để AI đề xuất câu chữ.</p></div> : <>
+                <div className="grading-review-step"><span className="grading-step-number">3</span><b>Duyệt lời nhận xét <HelpTip title="Duyệt lời nhận xét">Đọc lại nội dung AI soạn. Sao chép phương án bạn chọn, gửi qua Pancake, rồi bấm xác nhận đã gửi để lưu lượt trả bài.</HelpTip></b></div>
+                {assignmentOptions.map((option) => <article key={option.id} className="grading-card"><div className="grading-card-top"><span className="grading-tone-name">{option.tone}</span></div><p className="grading-card-content">{option.content}</p>
+                  {option.usedFacts && <details className="grading-used-facts"><summary>Căn cứ AI đã dùng</summary>{option.usedFacts.map((fact, index) => <p key={index}>{fact}</p>)}</details>}
+                  <div className="grading-card-footer"><button type="button" className="btn-apply-suggestion" onClick={() => onUseSuggestion(option.content)}>Đưa vào bản nháp</button></div>
+                </article>)}
+              </>}
             </div>
+            {reviewSessionId && !reviewConfirmed && <div className="review-confirm-row grading-confirm"><b>Xác nhận lượt trả bài</b><p>Sau khi gửi nhận xét qua Pancake, bấm xác nhận để tính một lượt trả bài. Soạn lại câu chữ không tăng số lượt.</p><button type="button" className="btn-primary-small" disabled={isGradingLoading || gradingDraftChanged} onClick={() => void handleConfirmReview()}>Đã gửi nhận xét qua Pancake</button></div>}
+            {reviewConfirmed && <div className="review-confirmed-note" role="status">Đã xác nhận lượt trả bài trong hồ sơ.</div>}
           </div>
         )}
 
-        {/* TAB 4: GHI NHỚ */}
-        {activeTab === 'memories' && (
-          <div className="tab-pane pane-memories">
-            <div className="memories-top-bar">
-              <span className="section-title">Trí nhớ học viên ({memories.length})</span>
-              <button
-                type="button"
-                className="btn-add-memory"
-                onClick={() => setIsAddingMemory(!isAddingMemory)}
-              >
-                {isAddingMemory ? '✕ Đóng' : '+ Thêm ghi nhớ'}
-              </button>
-            </div>
-
-            {isAddingMemory && (
-              <form className="add-memory-form" onSubmit={handleAddMemorySubmit}>
-                <div className="form-group">
-                  <label>Nội dung cần nhớ:</label>
-                  <textarea
-                    className="form-textarea"
-                    placeholder="VD: Học viên chỉ học được buổi tối sau 20h..."
-                    value={newMemoryContent}
-                    onChange={(e) => setNewMemoryContent(e.target.value)}
-                    required
-                    rows={2}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Lý do / Bối cảnh ghi nhớ:</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="VD: Học viên chia sẻ trong tin nhắn tuần trước"
-                    value={newMemoryReason}
-                    onChange={(e) => setNewMemoryReason(e.target.value)}
-                  />
-                </div>
-                <div className="form-submit-row">
-                  <button type="submit" className="btn-primary-small" disabled={isSavingContext}>
-                    {isSavingContext ? 'Đang lưu…' : 'Lưu ghi nhớ'}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-cancel-small"
-                    onClick={() => setIsAddingMemory(false)}
-                  >
-                    Hủy
-                  </button>
-                </div>
-                {formError && <div className="inline-form-error" role="alert">{formError}</div>}
-              </form>
-            )}
-
-            {/* 3 NHÓM GHI NHỚ */}
-            <div className="memory-groups-stack">
-              {/* Nhóm 1: Đang áp dụng */}
-              <div className="memory-group">
-                <div className="group-heading">
-                  <span className="group-indicator indicator-active" />
-                  <span className="group-name">Đang áp dụng</span>
-                  <span className="group-count">
-                    ({memories.filter((m) => m.status === 'active').length})
-                  </span>
-                </div>
-                <div className="group-items">
-                  {memories
-                    .filter((m) => m.status === 'active')
-                    .map((m) => (
-                      <div key={m.id} className="memory-item-card item-active">
-                        <div className="memory-content">{m.content}</div>
-                        <div className="memory-footer">
-                          <span className="memory-date">{m.createdAt}</span>
-                          <span className="badge-active-tag">✓ Đang dùng</span>
-                          <button type="button" className="btn-memory-secondary" onClick={() => onMemoryAction?.(m.id, 'archive')} disabled={isSavingContext}>
-                            Lưu trữ
-                          </button>
-                          <button type="button" className="btn-memory-danger" onClick={() => onDeleteMemory?.(m.id)} disabled={isSavingContext}>
-                            Xóa hẳn
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                </div>
+        {activeTab === 'memories' && <div className="tab-pane pane-memories">
+          <StudentLearningCard
+            key={`${conversation.id}:${studentIdentity?.student?.id || 'unlinked'}:memories`}
+            mode="memories" loading={isContextLoading} identity={studentIdentity || null} students={studentOptions}
+            summary={studentSummary || null} conversationId={conversation.id} messages={conversation.messages}
+            onLink={onLinkStudent || (async () => {})} onOpenEvidence={onOpenEvidence}
+            onRefresh={onRefreshStudentSummary || (async () => null)} onSyncHistory={onSyncConversationHistory || (async () => null)}
+          />
+          {studentIdentity?.status === 'linked' && memories.length > 0 && <details className="profile-advanced-details"><summary>Ghi nhớ từ giao diện cũ ({memories.length})</summary>
+            <p className="learning-muted">Ghi nhớ mới được quản lý ở phía trên. Kiểm tra và xác nhận dữ liệu đã chuyển từ hồ sơ cũ trước khi dùng cho AI.</p>
+            {memories.map((memory) => <article className="learning-fact-card" key={memory.id}><p>{memory.content}</p><small>{memory.reason}</small>
+              <div className="learning-button-row"><span className="learning-tag">{memory.status === 'active' ? 'Đã lưu ở hồ sơ cũ' : memory.status === 'archived' ? 'Đã lưu trữ' : 'Cần kiểm tra'}</span>
+                <button type="button" className="learning-text-button" onClick={() => onMemoryAction?.(memory.id, memory.status === 'archived' ? 'restore' : 'archive')} disabled={isSavingContext}>{memory.status === 'archived' ? 'Khôi phục' : 'Lưu trữ'}</button>
+                <button type="button" className="learning-text-button" onClick={() => onDeleteMemory?.(memory.id)} disabled={isSavingContext}>Xóa ghi nhớ cũ</button>
               </div>
+            </article>)}
+          </details>}
+        </div>}
 
-              {/* Nhóm 2: AI đề xuất */}
-              <div className="memory-group">
-                <div className="group-heading">
-                  <span className="group-indicator indicator-suggested" />
-                  <span className="group-name">AI đề xuất ghi nhớ</span>
-                  <span className="group-count">
-                    ({memories.filter((m) => m.status === 'ai_suggested').length})
-                  </span>
-                </div>
-                <div className="group-items">
-                  {memories
-                    .filter((m) => m.status === 'ai_suggested')
-                    .map((m) => (
-                      <div key={m.id} className="memory-item-card item-suggested">
-                        <div className="memory-content">{m.content}</div>
-                        {m.reason && (
-                          <div className="memory-reason-box">
-                            💡 <em>Lý do: {m.reason}</em>
-                          </div>
-                        )}
-                        <div className="memory-actions-row">
-                          <button
-                            type="button"
-                            className="btn-memory-accept"
-                            onClick={() => onMemoryAction?.(m.id, 'activate')}
-                          >
-                            ✓ Áp dụng ghi nhớ
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </div>
-
-              {/* Nhóm 3: Lịch sử */}
-              <div className="memory-group">
-                <div className="group-heading">
-                  <span className="group-indicator indicator-history" />
-                  <span className="group-name">Lịch sử</span>
-                  <span className="group-count">
-                    ({memories.filter((m) => ['history', 'archived', 'expired', 'review_due'].includes(m.status)).length})
-                  </span>
-                </div>
-                <div className="group-items">
-                  {memories
-                    .filter((m) => ['history', 'archived', 'expired', 'review_due'].includes(m.status))
-                    .map((m) => (
-                      <div key={m.id} className="memory-item-card item-history">
-                        <div className="memory-content text-muted">{m.content}</div>
-                        <div className="memory-footer">
-                          <span className="memory-date">{m.createdAt}</span>
-                          {m.status === 'archived' && (
-                            <button type="button" className="btn-memory-secondary" onClick={() => onMemoryAction?.(m.id, 'restore')} disabled={isSavingContext}>
-                              Khôi phục
-                            </button>
-                          )}
-                          <button type="button" className="btn-memory-danger" onClick={() => onDeleteMemory?.(m.id)} disabled={isSavingContext}>
-                            Xóa hẳn
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </aside>
   );
@@ -897,10 +687,13 @@ function CustomFieldEditor({
 }: {
   field: CustomField;
   disabled?: boolean;
-  onSave: (changes: { value?: string; useInSuggestions?: boolean; hidden?: boolean }) => Promise<void> | void;
+  onSave: (changes: { value?: string; addOption?: string; useInSuggestions?: boolean; hidden?: boolean }) => Promise<void> | void;
   onDelete: () => Promise<void> | void;
 }) {
   const [value, setValue] = useState(field.value);
+  const [adding, setAdding] = useState(false);
+  const [notice, setNotice] = useState('');
+  useEffect(() => { setValue(field.value); }, [field.value]);
   const [error, setError] = useState('');
 
   const save = async () => {
@@ -916,18 +709,24 @@ function CustomFieldEditor({
     }
   };
 
+  const addOption = async (name:string) => {
+    setError(''); setNotice(''); setAdding(true);
+    try { await onSave({addOption:name,value:name}); setNotice('Đã thêm lựa chọn và lưu giá trị.'); }
+    catch(error) { setError(error instanceof Error ? error.message : 'Không thêm được lựa chọn.'); }
+    finally { setAdding(false); }
+  };
   return (
     <div className="custom-field-item">
       <div className="cf-meta">
-        <span className="cf-name">{field.name}</span>
-        <span className="cf-tag">{field.fillMode === 'manual' ? 'Tự điền' : field.fillMode === 'ai_evaluate' ? 'AI đánh giá' : 'AI bóc tách'}</span>
+        <span className="cf-name">{field.name} <HelpTip title={field.name}>Nhập hoặc chọn giá trị cho học viên đang chat. Với dạng danh sách, gõ lựa chọn chưa có và bấm “Thêm lựa chọn” để lưu ngay vào danh sách và chọn giá trị đó. Chọn mục đã có thì bấm “Lưu giá trị”. {field.fillMode !== 'manual' && 'Thuộc tính này có cấu hình AI cũ, nhưng AI chưa tự điền; hiện bạn vẫn cần nhập và lưu.'}</HelpTip></span>
+        <span className="cf-tag">{field.fillMode === 'manual' ? 'Tự điền' : 'AI cũ · cần nhập tay'}</span>
         {field.useInSuggestions && <span className="cf-ai-tag">Dùng cho AI</span>}
       </div>
       {field.type === 'select' ? (
-        <select className="form-select" value={value} onChange={(event) => setValue(event.target.value)}>
+        <SearchSelect aria-label={field.name} className="form-select" value={value} disabled={disabled || adding} createLabel="Thêm lựa chọn" onCreate={name => void addOption(name)} onChange={(event) => { setValue(event.target.value); setNotice(''); }}>
           <option value="">Chưa chọn</option>
           {(field.options || []).map((option) => <option key={option} value={option}>{option}</option>)}
-        </select>
+        </SearchSelect>
       ) : (
         <input
           className="form-input"
@@ -937,10 +736,13 @@ function CustomFieldEditor({
           placeholder="Chưa có giá trị"
         />
       )}
+      {field.type === 'select' && <small className="field-help-note">Gõ để tìm hoặc thêm lựa chọn mới.</small>}
+      {notice && <div className="learning-notice" role="status">{notice}</div>}
+      {adding && <p role="status">Đang thêm lựa chọn…</p>}
       {field.evidence && <div className="field-evidence">Tiêu chí/nguồn: {field.evidence}</div>}
       {error && <div className="inline-form-error" role="alert">{error}</div>}
       <div className="cf-actions">
-        <button type="button" className="btn-primary-small" onClick={save} disabled={disabled || value === field.value}>Lưu giá trị</button>
+        <button type="button" className="btn-primary-small" onClick={save} disabled={disabled || adding || value === field.value}>Lưu giá trị</button>
         <label className="checkbox-label">
           <input
             type="checkbox"
@@ -948,9 +750,9 @@ function CustomFieldEditor({
             disabled={disabled}
             onChange={(event) => void onSave({ useInSuggestions: event.target.checked })}
           />
-          <span>Dùng cho AI</span>
+          <span>Dùng cho AI <HelpTip title="Dùng cho AI">Khi bật, giá trị bạn đã lưu được đưa vào ngữ cảnh gợi ý chat. AI không tự điền hoặc sửa thuộc tính này.</HelpTip></span>
         </label>
-        <button type="button" className="btn-memory-danger" onClick={() => void onDelete()} disabled={disabled}>Xóa field</button>
+        <button type="button" className="btn-memory-danger" onClick={() => void onDelete()} disabled={disabled}>Xóa thuộc tính</button>
       </div>
     </div>
   );

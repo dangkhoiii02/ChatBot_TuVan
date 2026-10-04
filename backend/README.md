@@ -1,6 +1,6 @@
-# Pancake Demo Backend
+# Pancake Backend
 
-Backend demo nay dung Node.js + TypeScript de lay hoi thoai tu Pancake o che do read-only, sinh goi y bang dữ liệu mẫu hoặc AI đa nhà cung cấp, va luu phan hoi demo vao local JSONL.
+Backend dùng Node.js + TypeScript để đọc hội thoại Pancake, tạo gợi ý với AI đa nhà cung cấp và quản lý hồ sơ học viên, bài tập, lượt trả bài, lỗi kỹ thuật và ghi nhớ trong SQLite.
 
 Trong phase nay backend khong gui tin nhan ve Pancake, khong mark read, khong assign, va khong tag hoi thoai.
 
@@ -21,6 +21,12 @@ npm run dev:fixtures-ui
 ```
 
 Mở `http://127.0.0.1:5180/`. Lệnh này dựng SQLite tạm, tạo signed session giả cho `staff-test`/`page-test`, rồi chạy Backend và Vite. Auth/page authorization của Backend vẫn hoạt động; chế độ này chỉ có trong Vite dev và dừng lệnh sẽ xóa DB tạm. Production build vẫn hiện form đăng nhập.
+
+Fixture dùng phản hồi AI cố định qua transport riêng để kiểm tra thao tác chấm bài và xác nhận gửi; không gọi Pancake hoặc nhà cung cấp AI thật, không cần key thật. Đây là kiểm tra luồng nghiệp vụ, không đánh giá chất lượng AI. Có thể đổi cổng để chạy song song với ứng dụng thật:
+
+```bash
+FIXTURE_BACKEND_PORT=4010 FIXTURE_FRONTEND_PORT=5181 npm run dev:fixtures-ui
+```
 
 ### Pancake (single-page)
 

@@ -39,7 +39,9 @@ import {
   deleteStudentCustomField,
   deleteStudentMemory,
   getConversationMessages,
+  getConversationSourceContext,
   getConversationStudentLink,
+  ensureConversationStudentProfile,
   getConversations,
   getHealth,
   getPages,
@@ -97,6 +99,9 @@ export const App: React.FC = () => {
   const suggestionRequestRef = useRef(0);
   const conversationRequestRef = useRef(0);
   const draftsByConversationRef = useRef(new Map<string, string>());
+  const sourceMessagesRef = useRef(new Map<string, ChatMessage[]>());
+  const activeStudentScopeRef = useRef('');
+  const evidenceRequestRef = useRef(0);
 
   // AI API Key & Model configuration
   const [showAiSettings, setShowAiSettings] = useState<boolean>(false);
@@ -207,18 +212,33 @@ export const App: React.FC = () => {
     () => conversations.find((c) => c.id === selectedId),
     [conversations, selectedId]
   );
+  activeStudentScopeRef.current = `${selectedConversation?.id || ''}:${studentIdentity?.conversationId === selectedConversation?.id ? studentIdentity?.student?.id || '' : ''}`;
 
   useEffect(()=>{
     if(!pendingEvidenceMessageId||!selectedConversation)return;
     const message=selectedConversation.messages.find((item)=>item.id===pendingEvidenceMessageId);
     if(!message)return;
-    document.getElementById(`message-${pendingEvidenceMessageId}`)?.scrollIntoView({behavior:'smooth',block:'center'});
+    const element=document.getElementById(`message-${pendingEvidenceMessageId}`);
+    element?.scrollIntoView({behavior:'smooth',block:'center'});
+    if(element) {
+      element.dataset.evidenceFocus='true';
+      window.setTimeout(()=>{delete element.dataset.evidenceFocus},4000);
+    }
     setPendingEvidenceMessageId(null);
   },[pendingEvidenceMessageId,selectedConversation?.id,selectedConversation?.messages]);
 
   useEffect(() => {
     if (errorMessage) setLastError(errorMessage);
   }, [errorMessage]);
+
+  useEffect(() => {
+    const receive=(event:Event)=>{
+      const message=(event as CustomEvent<unknown>).detail;
+      if(typeof message==='string')setLastError(message);
+    };
+    window.addEventListener('ttd:feature-error',receive);
+    return()=>window.removeEventListener('ttd:feature-error',receive);
+  },[]);
 
   useEffect(() => {
     const handleSessionExpired = () => {
@@ -399,8 +419,8 @@ export const App: React.FC = () => {
     getConversationMessages(selectedId, selectedConversation.pageId, MESSAGE_LIMIT, controller.signal)
       .then((items) => {
         if (!isCurrent) return;
-        const messages = items
-          .map(mapChatMessage)
+        const messages = Array.from(new Map([...(sourceMessagesRef.current.get(selectedId) || []), ...items.map(mapChatMessage)]
+          .map((message) => [message.id, message])).values())
           .sort((a, b) => {
             return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
           });
@@ -442,6 +462,7 @@ export const App: React.FC = () => {
     setStudentSummary(null);
     setIsLoadingContext(true);
     getConversationStudentLink(selectedConversation.id, selectedConversation.pageId, controller.signal)
+      .then(async result => result.identity.status === 'linked' ? result : ensureConversationStudentProfile(selectedConversation.id,selectedConversation.pageId,controller.signal))
       .then(({ identity, students }) => {
         if (controller.signal.aborted) return;
         setStudentIdentity(identity);
@@ -499,18 +520,21 @@ export const App: React.FC = () => {
     const result = await linkStudentToConversation({
       conversationId:selectedConversation.id,pageId:selectedConversation.pageId,...input
     });
+    if (!activeStudentScopeRef.current.startsWith(`${selectedConversation.id}:`)) return;
     setStudentIdentity(result.identity);
     setStudentOptions(result.students);
     setConversations((current)=>current.map((conversation)=>conversation.id===selectedConversation.id
       ? {...conversation,studentId:result.identity.student?.id,studentName:result.identity.student?.name||result.identity.customerName,
-        profile:undefined,memories:undefined,contextRevision:undefined,studentRevision:result.identity.student?.revision}
+        profile:undefined,memories:undefined,contextRevision:undefined,studentRevision:result.identity.student?.revision,assignmentOptions:[],suggestions:[]}
       :conversation));
   },[selectedConversation]);
 
   const refreshStudentSummary = useCallback(async () => {
     const studentId=studentIdentity?.student?.id;
     if(!studentId) return null;
+    const scope = `${selectedConversation?.id || ''}:${studentId}`;
     const summary=await getStudentSummary(studentId);
+    if (activeStudentScopeRef.current !== scope) return summary;
     setStudentSummary(summary);
     setStudentIdentity((identity)=>identity?.student?.id===studentId
       ? {...identity,student:{...identity.student,revision:summary.revision}}:identity);
@@ -553,6 +577,9 @@ export const App: React.FC = () => {
   }, []);
 
   const handleSelectConversation = useCallback((id: string) => {
+    evidenceRequestRef.current += 1;
+    setPendingEvidenceMessageId(null);
+    setConflictDialog({isOpen:false,pendingContent:''});
     suggestionRequestRef.current += 1;
     setIsGenerating(false);
     setSelectedId(id);
@@ -565,15 +592,27 @@ export const App: React.FC = () => {
     );
   }, []);
 
-  const handleOpenEvidence=useCallback((conversationId:string,messageId?:string)=>{
-    if(!conversations.some((item)=>item.id===conversationId)) {
-      setErrorMessage('Hội thoại nguồn hiện không nằm trong danh sách đã tải. Hãy làm mới danh sách rồi mở lại nguồn.');
+  const handleOpenEvidence=useCallback(async (conversationId:string,messageId?:string)=>{
+    const pageId=selectedConversation?.pageId;
+    if (!pageId) return;
+    if (!messageId) {
+      if(conversations.some((item)=>item.id===conversationId)) handleSelectConversation(conversationId);
+      else setErrorMessage('Nguồn này chưa có ID tin nhắn để mở. Xem bản nguyên văn trong hồ sơ.');
       return;
     }
-    if(messageId)setPendingEvidenceMessageId(messageId);
-    handleSelectConversation(conversationId);
-    setMobileView('chat');
-  },[conversations,handleSelectConversation]);
+    const request=++evidenceRequestRef.current;
+    try {
+      const result=await getConversationSourceContext(conversationId,pageId,messageId);
+      if (request!==evidenceRequestRef.current) return;
+      const sourceMessages=result.items.map(mapChatMessage);
+      sourceMessagesRef.current.set(conversationId,sourceMessages);
+      setConversations((rows)=>rows.some((item)=>item.id===conversationId)
+        ? rows.map((item)=>item.id===conversationId?{...item,messages:sourceMessages}:item)
+        : [...rows,{...mapConversationSummary(result.conversation,new Map()),messages:sourceMessages}]);
+      handleSelectConversation(conversationId);
+      setPendingEvidenceMessageId(messageId);
+    } catch(error) {if(request===evidenceRequestRef.current)setErrorMessage(getErrorMessage(error));}
+  },[conversations,handleSelectConversation,selectedConversation?.pageId]);
 
   const handleCopyDraft = useCallback(() => {
     if (!draftMessage.trim()) return;
@@ -703,12 +742,13 @@ export const App: React.FC = () => {
 
   // Fast Pedagogical Assignment Review Generator connected to Backend API
   const handleGradeAssignment = useCallback(
-    async (reviewText: string, assignmentId?:string, assignmentTitle?:string, reviewSessionKey?:string) => {
+    async (reviewText: string, assignmentId?:string, assignmentTitle?:string, reviewSessionKey?:string, sourceMessageId?:string) => {
       if (!selectedConversation) return;
       const trimmed = reviewText.trim();
       if (!trimmed) return;
 
       try {
+        const scope=activeStudentScopeRef.current;
         const response = await createTeacherReview({
           conversationId: selectedConversation.id,
           teacherInput: trimmed,
@@ -718,8 +758,10 @@ export const App: React.FC = () => {
           contextRevision: studentSummary?.revision,
           assignmentId,
           assignmentTitle,
-          reviewSessionKey
+          reviewSessionKey,
+          sourceMessageId
         });
+        if(scope!==activeStudentScopeRef.current) return;
 
         const options: AssignmentReviewOption[] = response.suggestions.map((sug, index) => ({
           id: sug.id || `asg_${Date.now()}_${index}`,
@@ -875,7 +917,7 @@ export const App: React.FC = () => {
 
   const handleUpdateCustomField = useCallback(async (
     fieldId: string,
-    changes: { value?: string; useInSuggestions?: boolean; hidden?: boolean }
+    changes: { value?: string; addOption?: string; useInSuggestions?: boolean; hidden?: boolean }
   ) => {
     if (!selectedConversation || !studentIdentity?.student) return;
     setIsSavingContext(true);
@@ -891,6 +933,7 @@ export const App: React.FC = () => {
       applyStudentContext(context);
     } catch (error) {
       handleContextMutationError(error);
+      throw error;
     } finally {
       setIsSavingContext(false);
     }
@@ -1012,12 +1055,12 @@ export const App: React.FC = () => {
         </div>
 
         <div className="navbar-status-badges">
-          <PageSelector
+          <div className={pages.length <= 1 ? 'single-page-selector' : undefined}><PageSelector
             pages={pages}
             selectedPageIds={selectedPageIds}
             isLoading={isLoadingPages}
             onChange={handlePageSelectionChange}
-          />
+          /></div>
           <span className={`badge-status-pill ${health?.ok ? 'badge-active' : 'badge-error'}`}>
             <span className={health?.ok ? 'dot-green' : 'dot-amber'} />
             {health?.ok ? 'Backend sẵn sàng' : 'Backend chưa kết nối'}
@@ -1035,8 +1078,6 @@ export const App: React.FC = () => {
               {aiMode === 'user_override' ? `AI riêng: ${aiProvider} / ${aiModel || 'chưa đủ cấu hình'}` : `AI mặc định: ${health?.aiProvider || 'đang tải'}${health?.aiModel ? ` / ${health.aiModel}` : ''}`}
             </span>
           </button>
-          <span className="badge-status-pill">{conversations.length} hội thoại</span>
-          {health && <span className="badge-status-pill">Server: {health.aiProvider}{health.aiModel ? ` / ${health.aiModel}` : ''}{health.aiConfigured === false ? ' · thiếu API key' : ''}</span>}
 
           {allowDevUserHeader && (
             <label className="badge-status-pill staff-user-id" title="Dev only: X-User-Id khi ALLOW_DEV_USER_HEADER">
@@ -1126,7 +1167,7 @@ export const App: React.FC = () => {
             isSavingContext={isSavingContext}
             studentIdentity={studentIdentity?.conversationId===selectedConversation?.id?studentIdentity:null}
             studentOptions={studentOptions}
-            studentSummary={studentSummary}
+            studentSummary={studentSummary?.studentId===studentIdentity?.student?.id?studentSummary:null}
             onLinkStudent={handleLinkStudent}
             onRefreshStudentSummary={refreshStudentSummary}
             onConfirmReviewSession={handleConfirmReviewSession}
@@ -1347,6 +1388,7 @@ function mapChatMessage(message: BackendChatMessage): ChatMessage {
     sender: message.sender,
     senderName: message.senderName,
     text: message.text || getAttachmentText(message.attachments),
+    sourceText: message.text,
     sentAt: formatTimestamp(message.createdAt),
     createdAt: message.createdAt,
     attachments: message.attachments

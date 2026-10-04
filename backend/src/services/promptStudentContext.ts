@@ -20,6 +20,7 @@ export function formatStudentContext(context:StudentContext,teacherReview:boolea
       if(!append(line)) break;
     }
   } else {
+    for(const field of context.attributes || []) if(!append(`Thuộc tính đã lưu [${field.id}] ${field.name}: ${field.value}.`)) break;
     const orderedFacts=[...context.facts.filter((fact)=>fact.kind==='preference'),
       ...context.facts.filter((fact)=>fact.kind==='event'),
       ...context.facts.filter((fact)=>fact.kind==='learning_note')];

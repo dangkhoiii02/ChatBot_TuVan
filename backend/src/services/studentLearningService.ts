@@ -15,11 +15,13 @@ export function getStudentSummary(pageId: string, studentId: string,options:{wri
   const student = getStudent(pageId, studentId);
   const db = getDatabase();
   const timestamp = now();
-  const cached = db.prepare('SELECT payload_json,valid_until AS validUntil FROM student_summary_snapshots WHERE student_id=?').get(studentId) as { payload_json: string; validUntil:string|null } | undefined;
+  const operationalDayStart = new Date(Math.floor((Date.parse(timestamp) + 7 * 3600000) / 86400000) * 86400000 - 7 * 3600000).toISOString();
+  const cached = db.prepare('SELECT payload_json,generated_at AS generatedAt,valid_until AS validUntil FROM student_summary_snapshots WHERE student_id=?').get(studentId) as { payload_json: string; generatedAt:string; validUntil:string|null } | undefined;
   if (cached) {
     try {
-      const payload = JSON.parse(cached.payload_json) as { revision?: number };
-      if (payload.revision === student.revision && (!cached.validUntil||cached.validUntil>timestamp)) return payload;
+      const legacyRevision=(db.prepare('SELECT revision FROM student_contexts WHERE page_id=? AND student_id=?').get(pageId,studentId) as {revision:number}|undefined)?.revision||null;
+      const payload = JSON.parse(cached.payload_json) as { revision?: number; legacyRevision?:number|null };
+      if (payload.revision === student.revision && payload.legacyRevision === legacyRevision && cached.generatedAt >= operationalDayStart && (!cached.validUntil||cached.validUntil>timestamp)) return payload;
     } catch { /* recompute a stale/corrupt snapshot */ }
   }
 
@@ -75,7 +77,7 @@ export function getStudentSummary(pageId: string, studentId: string,options:{wri
       errors: coverageRows.filter((item) => item.error).map((item) => item.error)
     },
     updatedAt: student.updated_at,
-    legacyUpdatedAt: legacy?.updated_at || null
+    legacyUpdatedAt: legacy?.updated_at || null, legacyRevision: legacy?.revision ?? null
   };
   const validUntil=facts.map((fact)=>typeof (fact as {expiresAt?:string|null}).expiresAt==='string'?(fact as {expiresAt:string}).expiresAt:'')
     .filter(Boolean).sort()[0]||null;
@@ -90,7 +92,7 @@ export function listFacts(pageId: string, studentId: string, includeArchived = f
   const where = includeArchived ? '' : "AND status='active'";
   return getDatabase().prepare(`SELECT id,kind,content,source_text AS sourceText,source_message_id AS sourceMessageId,
     source_conversation_id AS sourceConversationId,occurred_at AS occurredAt,expires_at AS expiresAt,status,
-    use_in_suggestions AS useInSuggestions,created_by AS createdBy,created_at AS createdAt,updated_at AS updatedAt,
+    use_in_suggestions AS useInSuggestions,use_requested AS useRequested,created_by AS createdBy,created_at AS createdAt,updated_at AS updatedAt,
     sensitivity,verification_status AS verificationStatus,conflict_status AS conflictStatus,conflict_key AS conflictKey
     FROM student_facts WHERE student_id=? ${where} ORDER BY created_at DESC LIMIT 200`).all(studentId);
 }
@@ -260,7 +262,7 @@ export function updateAssignment(input: { pageId: string; studentId: string; ass
   withTransaction(db,()=>{
     const result=db.prepare(`UPDATE student_assignments SET title=?,normalized_title=?,started_at=?,started_source=?,status=?,completed_at=?,completion_evidence=?,revision=revision+1,updated_at=?
       WHERE id=? AND student_id=? AND revision=?`).run(input.title?.trim()||current.title,normalizeTitle(input.title||current.title),
-        nextStartedAt,nextStartedAt?nextStartedSource:null,status,status==='completed'?timestamp:null,
+        nextStartedAt,nextStartedAt?nextStartedSource:null,status,status==='completed'?(current.status==='completed'?current.completed_at||timestamp:timestamp):null,
         input.completionEvidence ?? current.completion_evidence,timestamp,input.assignmentId,input.studentId,Number(current.revision));
     if(Number(result.changes)!==1) throw new HttpError(409,'Bài tập đã thay đổi. Hãy tải lại.','REVISION_CONFLICT');
     audit(input.studentId,'update','assignment',input.assignmentId,'staff',input);
@@ -327,8 +329,6 @@ export function createReviewSession(input: { pageId:string; studentId:string; co
     if(row.teacherInput!==input.teacherInput.trim() || row.assignmentId!==(assignmentId||null) || row.conversationId!==input.conversationId ||
       row.sourceMessageId!==(sourceMessageId||null))
       throw new HttpError(409,'Idempotency key đã được dùng cho một nhận xét khác.','IDEMPOTENCY_KEY_CONFLICT');
-    if(sourceMessageId) db.prepare(`UPDATE student_submissions SET status='reviewed' WHERE student_id=? AND conversation_id=? AND source_message_id=?`)
-      .run(input.studentId,input.conversationId,sourceMessageId);
     if(Number(insert.changes)===1) {
       audit(input.studentId,'create','review_session',row.id,input.staffId,{assignmentId,teacherInput:input.teacherInput});
       touch(input.studentId);
@@ -396,10 +396,21 @@ export function confirmReviewSession(input:{pageId:string;studentId:string;revie
   getStudent(input.pageId,input.studentId);
   const db=getDatabase();
   withTransaction(db,()=>{
+    const session=db.prepare('SELECT conversation_id AS conversationId,source_message_id AS sourceMessageId FROM student_review_sessions WHERE id=? AND student_id=?')
+      .get(input.reviewSessionId,input.studentId) as {conversationId:string;sourceMessageId:string|null}|undefined;
     const result=db.prepare(`UPDATE student_review_sessions SET status=?,confirmed_at=?,confirmation_evidence=?,updated_at=?
       WHERE id=? AND student_id=?`).run(input.confirmed?'confirmed':'cancelled',input.confirmed?now():null,
         input.confirmed?(input.evidence||'Nhân viên xác nhận đã gửi nhận xét.'):'',now(),input.reviewSessionId,input.studentId);
     if(Number(result.changes)!==1) throw new HttpError(404,'Không tìm thấy lượt trả bài.','REVIEW_SESSION_NOT_FOUND');
+    if(session?.sourceMessageId) {
+      if(input.confirmed) db.prepare(`UPDATE student_submissions SET status='reviewed'
+        WHERE student_id=? AND conversation_id=? AND source_message_id=? AND status='pending'`)
+        .run(input.studentId,session.conversationId,session.sourceMessageId);
+      else db.prepare(`UPDATE student_submissions SET status='pending' WHERE student_id=? AND conversation_id=? AND source_message_id=?
+        AND status='reviewed' AND NOT EXISTS(SELECT 1 FROM student_review_sessions r WHERE r.student_id=? AND r.conversation_id=?
+          AND r.source_message_id=? AND r.status='confirmed')`).run(input.studentId,session.conversationId,session.sourceMessageId,
+            input.studentId,session.conversationId,session.sourceMessageId);
+    }
     audit(input.studentId,input.confirmed?'confirm':'cancel','review_session',input.reviewSessionId,input.staffId,{evidence:input.evidence});
     touch(input.studentId);
   });
@@ -435,15 +446,17 @@ export function getIssueDetail(pageId:string,studentId:string,issueId:string,lim
     (SELECT COUNT(*) FROM issue_evidence e WHERE e.occurrence_id=o.id) AS evidenceCount
     FROM issue_occurrences o LEFT JOIN student_assignments a ON a.id=o.assignment_id
     WHERE o.issue_id=? ORDER BY o.occurred_at DESC LIMIT ? OFFSET ?`).all(issueId,limit,offset) as Array<Record<string,any>>;
-  const evidence=getDatabase().prepare(`SELECT e.id,e.occurrence_id AS occurrenceId,e.conversation_id AS conversationId,
+  const occurrenceIds=occurrences.map((occurrence)=>String(occurrence.id));
+  const evidence=occurrenceIds.length?getDatabase().prepare(`SELECT e.id,e.occurrence_id AS occurrenceId,e.conversation_id AS conversationId,
     e.message_id AS messageId,e.review_session_id AS reviewSessionId,e.speaker,e.verbatim_text AS verbatimText,
     e.occurred_at AS occurredAt,r.teacher_input AS teacherInput
     FROM issue_evidence e LEFT JOIN student_review_sessions r ON r.id=e.review_session_id
-    JOIN issue_occurrences o ON o.id=e.occurrence_id WHERE o.issue_id=? ORDER BY e.occurred_at DESC LIMIT ? OFFSET ?`)
-    .all(issueId,limit*5,offset*5);
+    WHERE e.issue_id=? AND e.occurrence_id IN (${occurrenceIds.map(()=>'?').join(',')})
+    ORDER BY e.occurred_at DESC,e.id`).all(issueId,...occurrenceIds):[];
   const actions=getDatabase().prepare(`SELECT id,content,review_session_id AS reviewSessionId,source_message_id AS sourceMessageId,
     created_by AS createdBy,created_at AS createdAt FROM issue_practice_actions WHERE issue_id=? ORDER BY created_at DESC LIMIT 50`).all(issueId);
-  return {issue,occurrences,evidence,practiceActions:actions,limit,offset,hasMore:occurrences.length===limit};
+  const hasMore=Boolean(getDatabase().prepare('SELECT 1 FROM issue_occurrences WHERE issue_id=? LIMIT 1 OFFSET ?').get(issueId,offset+limit));
+  return {issue,occurrences,evidence,practiceActions:actions,limit,offset,hasMore};
 }
 
 export function addIssueOccurrence(input: { pageId:string;studentId:string;staffId:string;issueId?:string;title?:string;summary?:string;

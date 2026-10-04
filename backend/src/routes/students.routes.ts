@@ -216,6 +216,7 @@ studentsRouter.patch(
     const body = mutationBaseSchema
       .extend({
         value: z.string().max(5000).optional(),
+        addOption: z.string().trim().min(1).max(200).optional(),
         useInSuggestions: z.boolean().optional(),
         hidden: z.boolean().optional()
       })
@@ -231,15 +232,25 @@ studentsRouter.patch(
         const customFields = current.customFields.map((field) => {
           if (field.id !== fieldId) return field;
           found = true;
-          const value = body.value ?? field.value;
+          const options=[...(field.options || [])];
+          if(body.addOption) {
+            if(field.type!=='select') throw new HttpError(400,'Chỉ thuộc tính dạng lựa chọn mới có danh sách.','CUSTOM_FIELD_INVALID_TYPE');
+            if(!options.some(option=>option.toLocaleLowerCase('vi')===body.addOption!.toLocaleLowerCase('vi'))) {
+              if(options.length>=100) throw new HttpError(400,'Danh sách đã có tối đa 100 lựa chọn.','CUSTOM_FIELD_OPTION_LIMIT');
+              options.push(body.addOption);
+            }
+          }
+          const canonicalOption=body.addOption ? options.find(option=>option.toLocaleLowerCase('vi')===body.addOption!.toLocaleLowerCase('vi')) : undefined;
+          const value = canonicalOption && body.value===body.addOption ? canonicalOption : body.value ?? field.value;
           if (field.type === 'number' && value.trim() && !Number.isFinite(Number(value))) {
             throw new HttpError(400, 'Giá trị phải là số.', 'CUSTOM_FIELD_INVALID_VALUE');
           }
-          if (field.type === 'select' && value && !(field.options || []).includes(value)) {
+          if (field.type === 'select' && value && !options.includes(value)) {
             throw new HttpError(400, 'Giá trị không thuộc danh sách lựa chọn.', 'CUSTOM_FIELD_INVALID_VALUE');
           }
           return {
             ...field,
+            ...(field.type==='select' ? {options} : {}),
             value,
             useInSuggestions: body.useInSuggestions ?? field.useInSuggestions,
             hidden: body.hidden ?? field.hidden,

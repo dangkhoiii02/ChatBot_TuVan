@@ -74,23 +74,30 @@ export type StudentFact = {
   id: string; kind: 'preference' | 'event' | 'learning_note'; content: string; sourceText?: string | null;
   sourceMessageId?: string | null; sourceConversationId?: string | null; occurredAt?: string | null; expiresAt?: string | null;
   status?: 'active' | 'archived'; useInSuggestions: number | boolean; createdAt: string; updatedAt?: string;
+  useRequested?: number | boolean; sensitivity?: 'normal' | 'private';
+  verificationStatus?: 'confirmed' | 'legacy_unverified'; conflictStatus?: 'none' | 'pending' | 'resolved'; conflictKey?: string | null;
 };
 export type StudentSummary = {
   pageId: string; studentId: string; studentName: string; revision: number; facts: StudentFact[]; expiredFacts:StudentFact[];
   assignments: Array<{id:string;title:string;status:string;revision:number;startedAt?:string|null;daysStuck?:number|null;durationLabel:string;
-    reviewSessionCount:number;pendingSubmissionCount:number;unconfirmedReviewCount:number;lastReviewedAt?:string|null;lastSubmittedAt?:string|null}>;
+    reviewSessionCount:number;pendingSubmissionCount:number;unconfirmedReviewCount:number;lastReviewedAt?:string|null;lastSubmittedAt?:string|null;
+    startedSource?:string|null;completedAt?:string|null;completionEvidence?:string|null}>;
   submissions: Array<{id:string;assignmentId?:string|null;assignmentTitle?:string|null;conversationId:string;sourceMessageId:string;submittedAt:string;status:string}>;
   issues: StudentIssue[]; unresolvedIssues: StudentIssue[];
   historyCoverage: {status:'unknown'|'partial'|'complete';lastSyncedAt?:string|null;oldestMessageAt?:string|null;newestMessageAt?:string|null;
     linkedConversationCount:number;syncedConversationCount:number;errors:string[]};
 };
 export type IssueDetail = {
+  limit?: number; offset?: number; hasMore?: boolean;
   issue: StudentIssue; occurrences: Array<{id:string;assignmentId?:string|null;assignmentTitle?:string|null;reviewSessionId?:string|null;
     occurredAt:string;sourceKind:string;approved:number;revision:number;evidenceCount:number}>;
   evidence: Array<{id:string;occurrenceId:string;conversationId?:string|null;messageId?:string|null;reviewSessionId?:string|null;
     speaker:string;verbatimText:string;occurredAt:string;teacherInput?:string|null}>;
   practiceActions: Array<{id:string;content:string;reviewSessionId?:string|null;sourceMessageId?:string|null;createdBy:string;createdAt:string}>;
 };
+export type StudentReviewSession = { id: string; assignmentId?: string | null; assignmentTitle?: string | null;
+  conversationId: string; teacherInput: string; status: 'draft' | 'confirmed'; reviewedAt: string; submittedAt?: string | null;
+  confirmedAt?: string | null; sourceMessageId?: string | null };
 export type StudentProposal = {id:string;kind:string;payload:Record<string,unknown>;sourceMessageId?:string|null;sourceText?:string|null;
   sourceConversationId?:string|null;confidence?:number|null;status:string;createdAt:string};
 
@@ -122,6 +129,7 @@ export type ChatMessage = {
   sender: 'student' | 'staff' | 'system';
   senderName?: string;
   text: string;
+  sourceText?: string;
   sentAt: string;
   createdAt?: string;
   attachments?: MessageAttachment[];

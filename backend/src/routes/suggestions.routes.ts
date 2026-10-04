@@ -140,7 +140,7 @@ suggestionsRouter.post(
         if(!input.reviewSessionKey) throw new HttpError(400,'Cần idempotency key cho lượt chấm bài.','REVIEW_IDEMPOTENCY_KEY_REQUIRED');
       }
       const summary = getStudentSummary(pageId,contextStudent.id,{writeCache:false}) as {
-        revision:number;facts:Array<Record<string,unknown>>;unresolvedIssues:Array<Record<string,unknown>>;
+        revision:number;facts:Array<Record<string,unknown>>;legacyCustomFields:Array<Record<string,unknown>>;unresolvedIssues:Array<Record<string,unknown>>;
         historyCoverage:{status:string;oldestMessageAt?:string|null;lastSyncedAt?:string|null};
       };
       const selectedStudent=getStudent(pageId,contextStudent.id);
@@ -157,6 +157,11 @@ suggestionsRouter.post(
           occurredAt:typeof fact.occurredAt==='string'?fact.occurredAt:undefined,
           expiresAt:typeof fact.expiresAt==='string'?fact.expiresAt:undefined
         })),
+      attributes:summary.legacyCustomFields.filter((field)=>field.useInSuggestions===true && !field.hidden &&
+          (field.source==='user_input'||field.source==='confirmed') && typeof field.value==='string' && field.value.trim() &&
+          typeof field.name==='string' && field.name.trim()).slice(0,8).map((field)=>({
+            id:String(field.id),name:String(field.name).slice(0,100),value:String(field.value).slice(0,300)
+          })),
       issueReferences:summary.unresolvedIssues.slice(0,12).map((issue)=>({
           id:String(issue.id),title:String(issue.title),status:String(issue.status),
           lastOccurredAt:typeof issue.lastOccurredAt==='string'?issue.lastOccurredAt:undefined,
