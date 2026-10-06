@@ -76,33 +76,23 @@ export async function getPages(signal?: AbortSignal) {
   return requestJson<{ items: BackendPageSummary[]; defaultSelectedPageIds: string[] }>('/api/pages', { signal });
 }
 
-export async function getConversations(pageIds: string[], limit = 30, signal?: AbortSignal) {
-  const search = new URLSearchParams({
-    pageIds: pageIds.join(','),
-    limit: String(limit)
-  });
-  const data = await requestJson<{ items: BackendConversationSummary[] }>(
-    `/api/conversations?${search.toString()}`,
-    { signal }
-  );
-  return data.items;
+export type ConversationPage = {items:BackendConversationSummary[];nextCursors:Record<string,string|null>;hasMore:boolean};
+export async function getConversationPage(pageIds:string[],limit=50,signal?:AbortSignal,cursors?:Record<string,string|null>) {
+  const search=new URLSearchParams({pageIds:pageIds.join(','),limit:String(limit)});
+  if(cursors) search.set('cursors',JSON.stringify(cursors));
+  return requestJson<ConversationPage>(`/api/conversations?${search}`,{signal});
 }
-
-export async function getConversationMessages(
-  conversationId: string,
-  pageId: string,
-  limit = 30,
-  signal?: AbortSignal
-) {
-  const search = new URLSearchParams({
-    pageId,
-    limit: String(limit)
-  });
-  const data = await requestJson<{ conversationId: string; items: BackendChatMessage[] }>(
-    `/api/conversations/${encodeURIComponent(conversationId)}/messages?${search.toString()}`,
-    { signal }
-  );
-  return data.items;
+export async function getConversations(pageIds:string[],limit=50,signal?:AbortSignal) {
+  return (await getConversationPage(pageIds,limit,signal)).items;
+}
+export type MessagePage={conversationId:string;items:BackendChatMessage[];nextCursor:string|null;hasMore:boolean;paginationError?:string|null};
+export async function getConversationMessagePage(conversationId:string,pageId:string,limit=50,signal?:AbortSignal,before?:string) {
+  const search=new URLSearchParams({pageId,limit:String(limit)});
+  if(before)search.set('before',before);
+  return requestJson<MessagePage>(`/api/conversations/${encodeURIComponent(conversationId)}/messages?${search}`,{signal});
+}
+export async function getConversationMessages(conversationId:string,pageId:string,limit=50,signal?:AbortSignal) {
+  return (await getConversationMessagePage(conversationId,pageId,limit,signal)).items;
 }
 
 export async function getConversationSourceContext(conversationId:string,pageId:string,messageId:string) {

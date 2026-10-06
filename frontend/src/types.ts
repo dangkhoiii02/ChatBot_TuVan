@@ -145,6 +145,7 @@ export type Suggestion = {
 
 export type Conversation = {
   id: string;
+  customerName?:string;
   pageId: string;
   pageName?: string;
   studentId?: string;
@@ -157,6 +158,7 @@ export type Conversation = {
   messages: ChatMessage[];
   suggestions: Suggestion[];
   flagReason?: string;
+  generationFacts?: BackendSuggestionResult['usedFacts'];
   aiAnalysis?: string;
   aiProvider?: string;
   isDemoFallback?: boolean;
@@ -231,7 +233,7 @@ export type BackendSuggestionResult = {
   redFlagTriggered?: boolean;
   identityStatus?: 'linked' | 'needs_selection';
   contextVersion?: string | null;
-  usedFacts?: Array<{id:string;kind:string;content:string;sourceMessageId?:string;sourceText?:string}>;
+  usedFacts?: Array<{id:string;kind:string;content:string;sourceMessageId?:string;sourceConversationId?:string;sourceText?:string}>;
   historyCoverage?: {status:string;oldestMessageAt?:string|null;lastSyncedAt?:string|null};
   reviewSessionId?: string | null;
   suggestions: Suggestion[];

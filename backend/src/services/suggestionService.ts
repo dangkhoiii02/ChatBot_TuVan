@@ -20,7 +20,7 @@ export type CreateSuggestionsInput = {
     studentId: string;
     studentName: string;
     revision: number;
-    facts: Array<{ id: string; kind: string; content: string; sourceText?: string; sourceMessageId?: string; occurredAt?: string; expiresAt?: string }>;
+    facts: Array<{ id: string; kind: string; content: string; sourceText?: string; sourceMessageId?: string; sourceConversationId?:string; occurredAt?: string; expiresAt?: string }>;
     attributes?: Array<{id:string;name:string;value:string}>;
     issueReferences: Array<{ id: string; title: string; status: string; lastOccurredAt?: string; latestPracticeAction?: string }>;
     historyCoverage: { status: string; oldestMessageAt?: string | null; lastSyncedAt?: string | null };

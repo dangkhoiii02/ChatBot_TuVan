@@ -1,0 +1,191 @@
+{
+  "date": "2026-10-06",
+  "environment": "Chrome UI 1440x1000, 390x844, 844x390",
+  "realChecks": {
+    "anhVo": [
+      1,
+      4
+    ],
+    "danPhuong": {
+      "first": 30,
+      "afterOlder": 120
+    },
+    "vuThiHuongLien": [
+      1,
+      1,
+      1
+    ],
+    "conversationsLoadedToFindTargets": 1080
+  },
+  "cases": [
+    {
+      "id": "E2E-01",
+      "name": "Tải toàn bộ lịch sử vượt 30 tin",
+      "status": "PASS",
+      "initial": 30,
+      "afterPages": [
+        60,
+        82
+      ]
+    },
+    {
+      "id": "E2E-02",
+      "name": "Hướng dẫn tại chỗ bằng icon ?",
+      "status": "PASS"
+    },
+    {
+      "id": "E2E-03",
+      "name": "Tạo và sửa bài với ngày bắt đầu có căn cứ",
+      "status": "PASS",
+      "note": "Đã tải đủ 82 tin nên UI hiện 5 ngày, không có nhãn ít nhất."
+    },
+    {
+      "id": "E2E-04",
+      "name": "Gắn tin nộp với bài đang học",
+      "status": "PASS"
+    },
+    {
+      "id": "E2E-05",
+      "name": "Chấm bài tạo lại không trùng lượt; chỉ tính sau xác nhận gửi",
+      "status": "PASS",
+      "note": "AI giả lập; xác nhận gửi là dữ liệu test, không gửi ra Pancake."
+    },
+    {
+      "id": "E2E-06",
+      "name": "Ba lỗi riêng có số lần 3–2–1 và nguồn học viên/giáo viên riêng",
+      "status": "PASS"
+    },
+    {
+      "id": "E2E-07",
+      "name": "Thêm căn cứ và nhập lại cùng tin không tăng số lần",
+      "status": "PASS"
+    },
+    {
+      "id": "E2E-08",
+      "name": "Xác nhận đã sửa, giữ lịch sử và ghi nhận lỗi gặp lại",
+      "status": "PASS"
+    },
+    {
+      "id": "E2E-09",
+      "name": "Tách một mốc sang lỗi mới và gộp lại đúng lỗi cũ",
+      "status": "PASS"
+    },
+    {
+      "id": "E2E-10",
+      "name": "Loại và khôi phục mốc, nguyên văn vẫn còn",
+      "status": "PASS"
+    },
+    {
+      "id": "E2E-11",
+      "name": "Hoàn thành và mở lại bài, giữ lượt trả bài",
+      "status": "PASS"
+    },
+    {
+      "id": "E2E-12",
+      "name": "Duyệt ghi nhớ chuyển từ dữ liệu cũ",
+      "status": "PASS"
+    },
+    {
+      "id": "E2E-13",
+      "name": "Ghi nhớ riêng tư, lưu trữ và khôi phục",
+      "status": "PASS"
+    },
+    {
+      "id": "E2E-14",
+      "name": "Ghi nhớ hết hiệu lực được lọc riêng",
+      "status": "PASS"
+    },
+    {
+      "id": "E2E-15",
+      "name": "Phát hiện mâu thuẫn xưng hô và chọn thông tin đúng",
+      "status": "PASS"
+    },
+    {
+      "id": "E2E-16",
+      "name": "Đề xuất AI có nguồn; sửa trước khi duyệt, từ chối và đọc lại không trùng",
+      "status": "PASS",
+      "note": "Transport AI cố định; kiểm thử luồng duyệt, không chấm chất lượng Gemini."
+    },
+    {
+      "id": "E2E-17",
+      "name": "Tạo thuộc tính dropdown và lưu lựa chọn mới",
+      "status": "PASS"
+    },
+    {
+      "id": "E2E-18",
+      "name": "Lựa chọn thuộc tính giữ sau tải lại và bật quyền AI đọc giá trị",
+      "status": "PASS"
+    },
+    {
+      "id": "E2E-19",
+      "name": "Đổi hội thoại không trộn thuộc tính/hồ sơ người khác",
+      "status": "PASS"
+    },
+    {
+      "id": "E2E-20",
+      "name": "Mở nguồn đã lưu nằm ngoài trang 30 tin hiện tại",
+      "status": "PASS"
+    },
+    {
+      "id": "E2E-21",
+      "name": "Tài khoản chung đổi người học nhưng tin cũ giữ đúng chủ sở hữu",
+      "status": "PASS"
+    },
+    {
+      "id": "E2E-22",
+      "name": "Tạo học viên mới trong ô chọn và xóa ngữ cảnh chấm bài cũ",
+      "status": "PASS"
+    },
+    {
+      "id": "E2E-23",
+      "name": "Từ chối trích dẫn sai; icon bug có mã lỗi; dữ liệu không được ghi",
+      "status": "PASS"
+    },
+    {
+      "id": "E2E-24",
+      "name": "Mở căn cứ ở hội thoại ngoài danh sách mới nhất",
+      "status": "PASS"
+    },
+    {
+      "id": "E2E-25",
+      "name": "Hai tab sửa cùng bài: tab cũ bị chặn 409, không ghi đè",
+      "status": "PASS"
+    },
+    {
+      "id": "E2E-26",
+      "name": "Mobile 390 và ngang 844: hướng dẫn, dropdown thêm mới, không tràn ngang",
+      "status": "PASS"
+    },
+    {
+      "id": "E2E-27",
+      "name": "Duyệt đề xuất lỗi/cách sửa/đã sửa; chặn lời tự báo của học viên",
+      "status": "PASS",
+      "note": "Đề xuất loại này nạp bằng dữ liệu mock; kiểm thử nguồn và thao tác duyệt."
+    },
+    {
+      "id": "E2E-28",
+      "name": "Đồng bộ lịch sử qua UI giữ dữ liệu và cập nhật phạm vi",
+      "status": "PASS"
+    },
+    {
+      "id": "E2E-29",
+      "name": "Tạo gợi ý chat dùng ghi nhớ duyệt; usedFacts không có riêng tư/hết hiệu lực",
+      "status": "PASS",
+      "note": "Thao tác UI và kiểm tra response usedFacts. Không đánh giá văn phong Gemini bằng transport giả."
+    },
+    {
+      "id": "E2E-30",
+      "name": "Dữ kiện AI đã dùng hiển thị; chọn gợi ý, chèn thêm, hủy và ghi đè nháp",
+      "status": "PASS"
+    },
+    {
+      "id": "E2E-31",
+      "name": "Làm mới danh sách vẫn giữ đúng hồ sơ và thuộc tính đang chọn",
+      "status": "PASS"
+    }
+  ],
+  "limitations": [
+    "AI giả lập dùng cho luồng và provenance; chưa nghiệm thu chất lượng Gemini hoặc gửi thật ra Pancake.",
+    "Backup/migration/tải đa instance không được nghiệm thu chỉ qua UI."
+  ]
+}

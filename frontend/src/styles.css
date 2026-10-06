@@ -4408,3 +4408,12 @@ html, body {
 .learning-profile-shortcuts { display: flex; flex-wrap: wrap; gap: 8px; }
 .learning-profile-shortcuts button { font-size: 12px; }
 .profile-attributes-heading { scroll-margin-top: 12px; }
+.chat-history-controls { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; padding: 10px; color: #64748b; font-size: 12px; }
+.chat-history-controls button, .sidebar-load-more button { border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; padding: 9px 12px; color: #1d4ed8; font-size: 12px; cursor: pointer; }
+.chat-history-controls button:disabled, .sidebar-load-more button:disabled { opacity: .6; cursor: wait; }
+.sidebar-load-more { display: grid; gap: 7px; padding: 14px; }
+.sidebar-load-more small { color: #64748b; text-align: center; font-size: 11px; }
+.generation-facts { margin: 10px 0; border: 1px solid #dbe3ee; border-radius: 9px; padding: 10px 12px; font-size: 12px; }
+.generation-facts summary { cursor: pointer; font-weight: 600; color: #475569; }
+.generation-facts p { line-height: 1.6; margin: 8px 0; }
+.chat-history-controls { flex-shrink: 0; justify-content: space-between; background: #fff; border-bottom: 1px solid #e2e8f0; padding: 8px 16px; }

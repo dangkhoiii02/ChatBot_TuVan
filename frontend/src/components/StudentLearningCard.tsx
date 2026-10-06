@@ -90,7 +90,7 @@ export function StudentLearningCard({ identity, students, summary, conversationI
   const [proposalTitle, setProposalTitle] = useState('');
 
   const candidateMessages = useMemo(() => messages.filter((message) => message.id && message.text.trim() && message.sender !== 'system')
-    .slice().sort((a, b) => Date.parse(b.createdAt || b.sentAt) - Date.parse(a.createdAt || a.sentAt)).slice(0, 50), [messages]);
+    .slice().sort((a, b) => Date.parse(b.createdAt || b.sentAt) - Date.parse(a.createdAt || a.sentAt)), [messages]);
   const studentMessages = candidateMessages.filter((message) => {
     const owner = messageLinks.find((link) => link.messageId === message.id);
     return owner?.studentId === linkedId;
@@ -124,7 +124,15 @@ export function StudentLearningCard({ identity, students, summary, conversationI
     if (!identity || !linkedId) return;
     let active = true;
     setMessagesLoading(true);
-    getConversationMessageStudents(identity.conversationId, identity.pageId, undefined, candidateMessages.map((message) => message.id)).then((result) => { if (active) setMessageLinks(result.items); })
+    const loadMessageOwners=async()=>{
+      const rows:ConversationMessageStudentLink[]=[];
+      for(let offset=0;offset<candidateMessages.length&&active;offset+=100) {
+        const result=await getConversationMessageStudents(identity.conversationId,identity.pageId,undefined,candidateMessages.slice(offset,offset+100).map(message=>message.id));
+        rows.push(...result.items);
+      }
+      return rows;
+    };
+    loadMessageOwners().then(rows=>{if(active)setMessageLinks(rows);})
       .catch((err) => { if (active) reportError(err, 'Không tải được học viên của tin nguồn.'); })
       .finally(() => { if(active)setMessagesLoading(false); });
     return () => { active = false; };
@@ -441,7 +449,7 @@ export function StudentLearningCard({ identity, students, summary, conversationI
         <div className="learning-segmented">{(['active', 'expired', 'archived'] as const).map((filter) => <button type="button" key={filter} aria-pressed={factFilter === filter} onClick={() => setFactFilter(filter)}>{filter === 'active' ? 'Hiện hành' : filter === 'expired' ? 'Hết hiệu lực' : 'Lưu trữ'}</button>)}</div>
         {displayedFacts.length === 0 && <div className="learning-empty"><b>Chưa có ghi nhớ trong mục này</b><p>Nhập thông tin đã xác nhận hoặc duyệt đề xuất từ tin nhắn.</p></div>}
         {displayedFacts.map((fact) => <article className="learning-fact-card" key={fact.id}>
-          <div className="learning-row"><span className="learning-tag">{factLabels[fact.kind]}</span><span className={`learning-tag ${fact.sensitivity === 'private' ? '' : fact.useInSuggestions ? 'success' : ''}`}>{fact.sensitivity === 'private' ? 'Riêng tư · không dùng cho AI' : fact.useInSuggestions ? 'Dùng cho AI' : 'Không dùng cho AI'}</span></div>
+          <div className="learning-row"><span className="learning-tag">{factLabels[fact.kind]}</span><span className={`learning-tag ${fact.sensitivity === 'private' ? '' : fact.useInSuggestions ? 'success' : ''}`}>{fact.sensitivity === 'private' ? 'Riêng tư · không dùng cho AI' : fact.status === 'archived' ? 'Đã lưu trữ · không dùng cho AI' : fact.expiresAt && Date.parse(fact.expiresAt)<=Date.now() ? 'Hết hiệu lực · không dùng cho AI' : fact.useInSuggestions ? 'Dùng cho AI' : 'Không dùng cho AI'}</span></div>
           <p>{fact.content}</p>{fact.expiresAt && <small>Hiệu lực đến {dateLabel(fact.expiresAt)}</small>}
           {fact.verificationStatus === 'legacy_unverified' && <p className="learning-pending">Ghi chú cũ chưa được xác nhận; AI chưa sử dụng.</p>}
           {fact.conflictStatus === 'pending' && <div className="learning-conflict"><b>Có yêu cầu mâu thuẫn</b><p>Chọn thông tin đúng để áp dụng; AI chưa dùng các yêu cầu đang mâu thuẫn.</p><button type="button" className="btn-secondary" disabled={Boolean(busy)} onClick={() => ask({ title: 'Chọn yêu cầu được áp dụng', description: fact.content, label: 'Căn cứ chọn yêu cầu này', submitLabel: 'Áp dụng yêu cầu này', submit: async () => { await updateStudentFact({ studentId: linkedId!, factId: fact.id, conflictResolution: 'use_this' }); await refresh(); } })}>Áp dụng yêu cầu này</button></div>}

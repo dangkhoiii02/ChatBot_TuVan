@@ -156,3 +156,13 @@ Tối ưu hồ sơ theo hội thoại: mở chat tự đọc hồ sơ đã gắn
 Hướng dẫn thao tác: các mục chính của web có nút `?` giải thích cách lưu và dùng thông tin. Thuộc tính dạng danh sách cho tìm hoặc thêm lựa chọn trực tiếp; backend lưu lựa chọn và giá trị trong cùng một lần cập nhật, chống trùng không phân biệt hoa/thường. “Ai nhập thông tin?” hiện là nhân viên nhập/xác nhận; các cấu hình AI tự điền cũ chưa có luồng thực thi và được ghi rõ trong UI. Khi nhân viên bật quyền dùng cho AI, giá trị thuộc tính đã lưu được đưa vào ngữ cảnh gợi ý chat, không dùng để khẳng định lỗi hiện tại lúc chấm bài.
 
 Lối tắt “＋ Thuộc tính” nằm ngay đầu tab Hồ sơ, mở biểu mẫu tạo thuộc tính và cuộn tới đúng vị trí trên desktop/mobile. Hướng dẫn `?` mô tả tên, kiểu, quyền dùng trong gợi ý, cách chọn nguồn và các bước chấm bài.
+
+## 12. Manual test E2E — 06/10/2026
+
+Đã thực hiện 31 ca qua giao diện web, tất cả đạt; bộ kiểm thử backend đạt 33/33. Chi tiết, dữ liệu mẫu và các bước chạy lại nằm trong [hướng dẫn E2E](HUONG_DAN_TEST_E2E_HO_SO_HOC_VIEN.md), [bản Word](HUONG_DAN_TEST_E2E_HO_SO_HOC_VIEN.docx) và [kết quả từng ca](qa/manual-e2e-2026-10-06/results.json).
+
+Đã bỏ giới hạn tổng 30 tin: UI tải tiếp lịch sử bằng phân trang Pancake, giữ tin đã tải và cho chọn nguồn cũ. Kiểm tra đọc trên tài khoản thật: Anh Võ, DanPhuong Tran và Vu Thi Huong Lien; hội thoại DanPhuong tải được 120 tin. Danh sách hội thoại cũng tải tiếp được và tìm tên không dấu. Bộ mock có hội thoại 82 tin để kiểm thử đến hết lịch sử.
+
+Các luồng ghi dữ liệu được kiểm tra trên DB mock riêng: bài tập, tin nộp, lượt trả bài, nhiều lỗi theo mốc, gộp/tách, tái phát, ghi nhớ/riêng tư/hết hiệu lực/xung đột, duyệt đề xuất, thuộc tính thêm lựa chọn, tài khoản dùng chung, nguồn cũ, lỗi nhập và xung đột hai tab, desktop/mobile. Các sửa phát hiện khi test gồm quyền đọc AI của thuộc tính, giữ đúng hồ sơ sau làm mới, hiển thị dữ kiện đã dùng và chặn đề xuất xác nhận đã sửa chỉ có lời tự báo của học viên.
+
+Phạm vi chưa nghiệm thu: chất lượng AI thật, gửi thật qua Pancake, tải đồng thời/độ trễ, độ ổn định dài hạn và nhiều instance. Kết quả mock không thay thế các kiểm tra này; chưa có số liệu yêu cầu thay SQLite cho triển khai một máy.

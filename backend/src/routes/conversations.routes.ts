@@ -15,7 +15,8 @@ const conversationsQuerySchema = z.object({
   pageIds: z.string().optional(),
   limit: z.coerce.number().int().positive().max(50).optional(),
   since: z.string().datetime().optional(),
-  until: z.string().datetime().optional()
+  until: z.string().datetime().optional(),
+  cursors: z.string().max(10000).optional()
 });
 
 const messagesQuerySchema = z.object({
@@ -31,28 +32,37 @@ conversationsRouter.get(
     const limit = query.limit ?? config.pancake.conversationLimit;
     const pageIds = getPageIds(query.pageIds);
     assertPageAccess(req, pageIds);
+    let cursors:Record<string,string|null>={};
+    if(query.cursors) {
+      try { cursors=z.record(z.string().max(200).nullable()).parse(JSON.parse(query.cursors)); }
+      catch { throw new HttpError(400,'Mốc tải hội thoại không hợp lệ.','INVALID_CONVERSATION_CURSOR'); }
+    }
+    const nextCursors:Record<string,string|null>={};
 
     // If Pancake is configured and not purely demo-page, query Pancake
     if (pageIds.every((pageId) => hasPancakePageAccess(pageId))) {
       try {
         const results = await Promise.all(
           pageIds.map(async (pageId) => {
+            if(query.cursors && Object.hasOwn(cursors,pageId) && cursors[pageId]===null) { nextCursors[pageId]=null; return []; }
             const raw = await pancakeClient.listConversations({
               pageId,
               limit,
               since: query.since,
-              until: query.until
+              until: query.until,
+              lastConversationId: cursors[pageId] || undefined
             });
 
-            return extractItems(raw).map((item) => normalizeConversation(item, { id: pageId }));
+            const items=extractItems(raw).map((item) => normalizeConversation(item, { id: pageId }));
+            nextCursors[pageId]=items.length>=limit && items.at(-1)?.id!==cursors[pageId] ? items.at(-1)!.id : null;
+            return items;
           })
         );
         const items = results
           .flat()
-          .sort((left, right) => getTime(right.updatedAt) - getTime(left.updatedAt))
-          .slice(0, limit);
+          .sort((left, right) => getTime(right.updatedAt) - getTime(left.updatedAt));
         rememberConversations(items);
-        return res.json({ items: items.map((item) => ({
+        return res.json({ nextCursors,hasMore:Object.values(nextCursors).some(Boolean),items: items.map((item) => ({
           ...item,
           studentIdentity: getConversationIdentity(item.pageId, item.id)
         })) });
@@ -70,23 +80,17 @@ conversationsRouter.get(
 
     // Fallback or demo mode: fetch from SQLite database
     const db = getDatabase();
-    const rows = db.prepare(`
-      SELECT id, page_id, page_name, customer_id, customer_name, avatar_url, last_message, updated_at, unread_count
-      FROM conversations
-      WHERE page_id IN (${pageIds.map(()=>'?').join(',')})
-      ORDER BY updated_at DESC
-      LIMIT ?
-    `).all(...pageIds,limit) as Array<{
-      id: string;
-      page_id: string;
-      page_name: string | null;
-      customer_id: string | null;
-      customer_name: string;
-      avatar_url: string | null;
-      last_message: string;
-      updated_at: string;
-      unread_count: number;
-    }>;
+    const rows=pageIds.flatMap(pageId=>{
+      if(query.cursors && Object.hasOwn(cursors,pageId) && cursors[pageId]===null) {nextCursors[pageId]=null;return [];}
+      const all=db.prepare(`SELECT id,page_id,page_name,customer_id,customer_name,avatar_url,last_message,updated_at,unread_count
+        FROM conversations WHERE page_id=? ORDER BY updated_at DESC,id DESC`).all(pageId) as Array<{
+          id:string;page_id:string;page_name:string|null;customer_id:string|null;customer_name:string;avatar_url:string|null;
+          last_message:string;updated_at:string;unread_count:number}>;
+      const index=cursors[pageId]?all.findIndex(row=>row.id===cursors[pageId])+1:0;
+      const page=all.slice(index,index+limit);
+      nextCursors[pageId]=index+limit<all.length?page.at(-1)?.id||null:null;
+      return page;
+    });
 
     const items = rows.map((row) => ({
       pageId: row.page_id,
@@ -101,7 +105,7 @@ conversationsRouter.get(
       source: 'pancake' as const
     }));
 
-    return res.json({ items: items.map((item) => ({
+    return res.json({nextCursors,hasMore:Object.values(nextCursors).some(Boolean),items: items.map((item) => ({
       ...item,
       studentIdentity: getConversationIdentity(item.pageId, item.id)
     })) });
@@ -217,13 +221,13 @@ conversationsRouter.get(
           before: query.before,
           nextCursor,
           complete: pagination.complete,
-          preserveCursor:pagination.invalid
+          preserveCursor:pagination.invalid,historyProgress:Boolean(query.before)||pagination.complete
         });
         if(!pagination.complete) enqueueHistoryBackfill(pageId,conversationId);
 
         return res.json({
-          conversationId,
-          items
+          conversationId,items,nextCursor:pagination.complete?null:nextCursor,
+          hasMore:!pagination.complete && Boolean(nextCursor),paginationError:pagination.invalid?pagination.reason:null
         });
       } catch (err) {
         enqueueHistoryBackfill(pageId,conversationId);
@@ -240,21 +244,14 @@ conversationsRouter.get(
 
     // Fallback: fetch from SQLite database
     const db = getDatabase();
-    const rows = db.prepare(`
-      SELECT id, conversation_id, sender, sender_name, text, attachments_json, created_at
-      FROM messages
-      WHERE conversation_id = ?
-      ORDER BY created_at ASC
-      LIMIT ?
-    `).all(conversationId, limit) as Array<{
-      id: string;
-      conversation_id: string;
-      sender: string;
-      sender_name: string | null;
-      text: string;
-      attachments_json: string | null;
-      created_at: string;
-    }>;
+    const offset=query.before?.startsWith('count:')?Number(query.before.slice(6)):0;
+    if(!Number.isSafeInteger(offset)||offset<0) throw new HttpError(400,'Mốc tải tin không hợp lệ.','INVALID_MESSAGE_CURSOR');
+    const rows=db.prepare(`SELECT message_id AS id,conversation_id,sender,sender_name,text,attachments_json,created_at
+      FROM conversation_message_cache WHERE page_id=? AND conversation_id=? ORDER BY created_at DESC,message_id DESC LIMIT ? OFFSET ?`)
+      .all(pageId,conversationId,limit,offset) as Array<{id:string;conversation_id:string;sender:string;sender_name:string|null;text:string;attachments_json:string|null;created_at:string}>;
+    const hasMore=Boolean(db.prepare('SELECT 1 FROM conversation_message_cache WHERE page_id=? AND conversation_id=? LIMIT 1 OFFSET ?').get(pageId,conversationId,offset+rows.length));
+    const nextCursor=hasMore?`count:${offset+rows.length}`:null;
+    rows.reverse();
 
     const items = rows.map((row) => ({
       id: row.id,
@@ -266,11 +263,10 @@ conversationsRouter.get(
       createdAt: row.created_at
     }));
 
-    rememberMessages(pageId, conversationId, items, { before: query.before });
+    rememberMessages(pageId, conversationId, items, { before: query.before,nextCursor:nextCursor||undefined,complete:!hasMore,historyProgress:Boolean(query.before)||!hasMore });
 
     res.json({
-      conversationId,
-      items
+      conversationId,items,nextCursor,hasMore
     });
   })
 );
@@ -303,7 +299,7 @@ conversationsRouter.post('/:conversationId/history/sync', asyncHandler(async (re
       rememberMessages(body.pageId, conversationId, items, { before: cursor, nextCursor, complete,
         preserveCursor:cursorMissing,historyProgress:true,error:cursorMissing?pagination.reason||'Pancake cursor did not advance.':undefined });
       synced += items.length;
-      if (cursorMissing||!items.length || complete || items.length < body.limit || !nextCursor || nextCursor === cursor) {
+      if (cursorMissing||!items.length || complete || !nextCursor || nextCursor === cursor) {
         stopped = true;
         break;
       }

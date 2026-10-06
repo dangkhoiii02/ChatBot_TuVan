@@ -6,6 +6,7 @@ type ListConversationsInput = {
   limit: number;
   since?: string;
   until?: string;
+  lastConversationId?: string;
 };
 
 type ListMessagesInput = {
@@ -25,21 +26,27 @@ export const pancakeClient = {
     return requestPancakePage(pageId, `/public_api/v2/pages/${pageId}/conversations`, {
       limit: String(input.limit),
       since: input.since,
-      until: input.until
+      until: input.until,
+      last_conversation_id: input.lastConversationId
     });
   },
 
   async listMessages(input: ListMessagesInput) {
     const pageId = resolvePageId(input.pageId);
 
-    return requestPancakePage(
-      pageId,
+    const offset = input.before?.startsWith('count:') ? Number(input.before.slice(6)) : 0;
+    if (!Number.isSafeInteger(offset) || offset < 0) throw new HttpError(400,'Mốc tải tin nhắn không hợp lệ.','INVALID_MESSAGE_CURSOR');
+    const raw = await requestPancakePage(pageId,
       `/public_api/v1/pages/${pageId}/conversations/${input.conversationId}/messages`,
-      {
-        limit: String(input.limit),
-        before: input.before
-      }
-    );
+      { current_count: String(offset), before:input.before?.startsWith('count:')?undefined:input.before });
+    if (!raw || typeof raw !== 'object') return raw;
+    const record = raw as Record<string,unknown>;
+    if (!Array.isArray(record.messages)) return raw;
+    if(['has_more','hasMore','next_before','nextBefore','before_cursor','pagination'].some(key=>Object.hasOwn(record,key)))return raw;
+    // Pancake's public v1 endpoint returns 30 messages per page, paginated by
+    // current_count, rather than the before parameter used by other APIs.
+    const complete = record.messages.length < 30;
+    return {...record, has_more:!complete, next_before:complete ? null : `count:${offset + record.messages.length}`};
   }
 };
 

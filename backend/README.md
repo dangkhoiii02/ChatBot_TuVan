@@ -28,6 +28,18 @@ Fixture dùng phản hồi AI cố định qua transport riêng để kiểm tra
 FIXTURE_BACKEND_PORT=4010 FIXTURE_FRONTEND_PORT=5181 npm run dev:fixtures-ui
 ```
 
+### Manual test hồ sơ và tiến độ chấm bài
+
+Từ thư mục gốc repository, mở bộ dữ liệu nhiều mốc, tài khoản dùng chung và lịch sử vượt 30 tin:
+
+```bash
+FIXTURE_SCENARIO=manual-e2e FIXTURE_BACKEND_PORT=4011 FIXTURE_FRONTEND_PORT=5182 node backend/tests/run-fixture-ui.mjs
+```
+
+Mở `http://127.0.0.1:5182/` và làm theo [hướng dẫn E2E](../docs/HUONG_DAN_TEST_E2E_HO_SO_HOC_VIEN.md). Có bản Word cùng tên trong `docs/`. AI và Pancake được giả lập; tài khoản `[TEST]` nằm trong DB riêng, không ghi vào dữ liệu thật.
+
+Mặc định DB tạm bị xóa khi dừng runner. Muốn giữ kết quả, thêm `FIXTURE_DATABASE_PATH=storage/manual-e2e-demo.db`. Chỉ tên DB test bắt đầu bằng `manual-e2e` được chấp nhận. Muốn chạy lại từ đầu, dừng runner rồi thêm `FIXTURE_RESET=1` vào lệnh dùng DB test đó; thao tác này xóa dữ liệu của DB test đã chọn. Các biến `FIXTURE_*` chỉ phục vụ runner, không cần đổi `.env` ứng dụng.
+
 ### Pancake (single-page)
 
 - `PANCAKE_PAGE_ID`: page id dang dung.

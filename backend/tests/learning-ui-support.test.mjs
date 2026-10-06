@@ -117,6 +117,14 @@ test('learning UI source, proposal and timeline support', async (t) => {
       assert.equal(detail.evidence[0].speaker, 'Teacher');
       assert.equal(detail.evidence[0].verbatimText, 'Keep your wrist relaxed.');
     });
+    await t.test('resolution proposals require teacher evidence rather than student self-report', () => {
+      const studentClaim=proposals.createProposal({pageId:FIXTURE.pageId,studentId:FIXTURE.studentB,staffId:FIXTURE.staffId,
+        kind:'resolution',payload:{issueTitle:'Relax wrist'},sourceConversationId:FIXTURE.conversationShared,
+        sourceMessageId:FIXTURE.messageB,sourceText:'I practiced scales before the piano recital Saturday.'});
+      const pending=studentClaim.items.find(item=>item.kind==='resolution');
+      assert.throws(()=>proposals.decideProposal({pageId:FIXTURE.pageId,studentId:FIXTURE.studentB,staffId:FIXTURE.staffId,proposalId:pending.id,action:'accept'}),error=>error.code==='RESOLUTION_SOURCE_UNVERIFIED');
+      assert.equal(learning.listIssues(FIXTURE.pageId,FIXTURE.studentB,'all').items.find(item=>item.title==='Relax wrist').status,'active');
+    });
     await t.test('day-based assignment durations refresh even without a student revision change', () => {
       const summary = learning.getStudentSummary(FIXTURE.pageId, FIXTURE.studentB);
       const stale = { ...summary, assignments: summary.assignments.map((assignment) => ({ ...assignment, durationLabel: 'stale days' })) };

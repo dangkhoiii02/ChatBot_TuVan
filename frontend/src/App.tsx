@@ -38,11 +38,11 @@ import {
   confirmReviewSession,
   deleteStudentCustomField,
   deleteStudentMemory,
-  getConversationMessages,
   getConversationSourceContext,
   getConversationStudentLink,
   ensureConversationStudentProfile,
-  getConversations,
+  getConversationPage,
+  getConversationMessagePage,
   getHealth,
   getPages,
   getStudentContext,
@@ -67,8 +67,8 @@ if (import.meta.env.DEV && import.meta.env.VITE_TEST_SESSION_TOKEN?.trim()) {
   setAppSession({ sessionToken: import.meta.env.VITE_TEST_SESSION_TOKEN.trim() });
 }
 
-const CONVERSATION_LIMIT = 30;
-const MESSAGE_LIMIT = 30;
+const CONVERSATION_LIMIT = 50;
+const MESSAGE_LIMIT = 50;
 export const App: React.FC = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedId, setSelectedId] = useState<string>('');
@@ -80,6 +80,12 @@ export const App: React.FC = () => {
   const [selectedPageIds, setSelectedPageIds] = useState<string[]>([]);
   const [isLoadingPages, setIsLoadingPages] = useState<boolean>(false);
   const [isLoadingConversations, setIsLoadingConversations] = useState<boolean>(false);
+  const [conversationCursors,setConversationCursors]=useState<Record<string,string|null>>({});
+  const [hasMoreConversations,setHasMoreConversations]=useState(false);
+  const [isLoadingMoreConversations,setIsLoadingMoreConversations]=useState(false);
+  const [messageCursor,setMessageCursor]=useState<string|null>(null);
+  const [hasMoreMessages,setHasMoreMessages]=useState(false);
+  const [isLoadingOlderMessages,setIsLoadingOlderMessages]=useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState<boolean>(false);
   const [isLoadingContext, setIsLoadingContext] = useState<boolean>(false);
   const [isSavingContext, setIsSavingContext] = useState<boolean>(false);
@@ -316,8 +322,10 @@ export const App: React.FC = () => {
         return;
       }
 
-      const items = await getConversations(selectedPageIds, CONVERSATION_LIMIT);
+      const page = await getConversationPage(selectedPageIds, CONVERSATION_LIMIT);
+      const items=page.items;
       if (requestNumber !== conversationRequestRef.current) return;
+      setConversationCursors(page.nextCursors||{});setHasMoreConversations(Boolean(page.hasMore));
       if (items && items.length > 0) {
         const mapped = items.map((item) => mapConversationSummary(item, pageNameById));
 
@@ -330,12 +338,15 @@ export const App: React.FC = () => {
               ...item,
               intent: existing?.intent && existing.intent !== 'unknown' ? existing.intent : item.intent,
               messages: existing?.messages && existing.messages.length > 0 ? existing.messages : item.messages,
-              suggestions: existing?.suggestions && existing.suggestions.length > 0 ? existing.suggestions : item.suggestions,
+              suggestions:existing?.studentId===item.studentId&&existing?.suggestions?.length?existing.suggestions:item.suggestions,
               flagReason: existing?.flagReason || item.flagReason,
               aiAnalysis: existing?.aiAnalysis || item.aiAnalysis,
               aiProvider: existing?.aiProvider || item.aiProvider,
+              studentId:item.studentId,
+              studentRevision:item.studentRevision,
+              generationFacts:existing?.studentId===item.studentId?existing?.generationFacts:undefined,
               isDemoFallback: existing?.isDemoFallback || item.isDemoFallback,
-              profile: existing?.profile || item.profile,
+              profile:existing?.studentId===item.studentId?existing?.profile:item.profile,
               memories: existing?.memories || item.memories,
               assignmentOptions: existing?.assignmentOptions || item.assignmentOptions
             };
@@ -354,6 +365,22 @@ export const App: React.FC = () => {
       setIsLoadingConversations(false);
     }
   }, [pageNameById, selectedPageIds]);
+
+  const loadMoreConversations=useCallback(async()=>{
+    if(isLoadingMoreConversations||!hasMoreConversations)return;
+    const scope=conversationRequestRef.current;
+    setIsLoadingMoreConversations(true);
+    try {
+      const page=await getConversationPage(selectedPageIds,CONVERSATION_LIMIT,undefined,conversationCursors);
+      if(scope!==conversationRequestRef.current)return;
+      setConversationCursors(page.nextCursors||{});setHasMoreConversations(Boolean(page.hasMore));
+      setConversations(current=>{
+        const known=new Set(current.map(item=>item.id));
+        return [...current,...page.items.filter(item=>!known.has(item.id)).map(item=>mapConversationSummary(item,pageNameById))];
+      });
+    } catch(error){if(scope===conversationRequestRef.current)setErrorMessage(getErrorMessage(error));}
+    finally{setIsLoadingMoreConversations(false);}
+  },[isLoadingMoreConversations,hasMoreConversations,selectedPageIds,conversationCursors,pageNameById]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -414,11 +441,15 @@ export const App: React.FC = () => {
     let isCurrent = true;
     const controller = new AbortController();
     setIsLoadingMessages(true);
+    setMessageCursor(null);setHasMoreMessages(false);setIsLoadingOlderMessages(false);
     setErrorMessage('');
 
-    getConversationMessages(selectedId, selectedConversation.pageId, MESSAGE_LIMIT, controller.signal)
-      .then((items) => {
+    getConversationMessagePage(selectedId, selectedConversation.pageId, MESSAGE_LIMIT, controller.signal)
+      .then((page) => {
+        const items=page.items;
         if (!isCurrent) return;
+        setMessageCursor(page.nextCursor||null);setHasMoreMessages(Boolean(page.hasMore));
+        if(page.paginationError)setErrorMessage(page.paginationError);
         const messages = Array.from(new Map([...(sourceMessagesRef.current.get(selectedId) || []), ...items.map(mapChatMessage)]
           .map((message) => [message.id, message])).values())
           .sort((a, b) => {
@@ -479,7 +510,7 @@ export const App: React.FC = () => {
         if (!controller.signal.aborted) setIsLoadingContext(false);
       });
     return () => controller.abort();
-  }, [selectedConversation?.id, selectedConversation?.pageId]);
+  }, [selectedConversation?.id, selectedConversation?.pageId,selectedConversation?.studentId]);
 
   useEffect(() => {
     const current = selectedConversation;
@@ -525,7 +556,7 @@ export const App: React.FC = () => {
     setStudentOptions(result.students);
     setConversations((current)=>current.map((conversation)=>conversation.id===selectedConversation.id
       ? {...conversation,studentId:result.identity.student?.id,studentName:result.identity.student?.name||result.identity.customerName,
-        profile:undefined,memories:undefined,contextRevision:undefined,studentRevision:result.identity.student?.revision,assignmentOptions:[],suggestions:[]}
+        profile:undefined,memories:undefined,contextRevision:undefined,studentRevision:result.identity.student?.revision,assignmentOptions:[],suggestions:[],generationFacts:[]}
       :conversation));
   },[selectedConversation]);
 
@@ -550,13 +581,33 @@ export const App: React.FC = () => {
     await refreshStudentSummary();
   },[refreshStudentSummary,studentIdentity?.student?.id]);
 
+  const loadOlderMessages=useCallback(async()=>{
+    if(!selectedConversation||!messageCursor||isLoadingOlderMessages)return;
+    const id=selectedConversation.id;
+    const scope=activeStudentScopeRef.current;
+    setIsLoadingOlderMessages(true);
+    try {
+      const page=await getConversationMessagePage(id,selectedConversation.pageId,MESSAGE_LIMIT,undefined,messageCursor);
+      if(scope!==activeStudentScopeRef.current)return;
+      if(page.hasMore&&page.nextCursor===messageCursor)throw new Error('Pancake trả lại cùng mốc lịch sử. Hãy thử tải lại.');
+      setMessageCursor(page.nextCursor||null);setHasMoreMessages(Boolean(page.hasMore));
+      setConversations(current=>current.map(conversation=>conversation.id===id?{...conversation,messages:
+        Array.from(new Map([...page.items.map(mapChatMessage),...conversation.messages].map(message=>[message.id,message])).values())
+          .sort((a,b)=>Date.parse(a.createdAt||a.sentAt)-Date.parse(b.createdAt||b.sentAt))}:conversation));
+      await refreshStudentSummary();
+    } catch(error){if(scope===activeStudentScopeRef.current)setErrorMessage(getErrorMessage(error));throw error;}
+    finally{if(scope===activeStudentScopeRef.current)setIsLoadingOlderMessages(false);}
+  },[selectedConversation,messageCursor,isLoadingOlderMessages,refreshStudentSummary]);
+
   const handleSyncConversationHistory = useCallback(async () => {
     if(!selectedConversation) return;
     const result=await syncConversationHistory({conversationId:selectedConversation.id,pageId:selectedConversation.pageId,pages:3});
     await refreshStudentSummary();
-    const messages=await getConversationMessages(selectedConversation.id,selectedConversation.pageId,MESSAGE_LIMIT);
-    setConversations((current)=>current.map((conversation)=>conversation.id===selectedConversation.id
-      ? {...conversation,messages:messages.map(mapChatMessage)}:conversation));
+    const page=await getConversationMessagePage(selectedConversation.id,selectedConversation.pageId,MESSAGE_LIMIT);
+    if(!activeStudentScopeRef.current.startsWith(`${selectedConversation.id}:`))return result;
+    setConversations(current=>current.map(conversation=>conversation.id===selectedConversation.id?{...conversation,messages:
+      Array.from(new Map([...conversation.messages,...page.items.map(mapChatMessage)].map(message=>[message.id,message])).values())
+        .sort((a,b)=>Date.parse(a.createdAt||a.sentAt)-Date.parse(b.createdAt||b.sentAt))}:conversation));
     return result;
   },[refreshStudentSummary,selectedConversation]);
 
@@ -993,6 +1044,7 @@ export const App: React.FC = () => {
                     : conversation.flagReason),
                 aiAnalysis: result.analysis,
                 aiProvider: result.provider,
+                generationFacts:result.usedFacts,
                 isDemoFallback: result.isDemoFallback,
                 suggestions: result.suggestions.map((suggestion) => ({
                   ...suggestion,
@@ -1123,6 +1175,9 @@ export const App: React.FC = () => {
             onSelect={handleSelectConversation}
             onRefresh={refreshConversations}
             isLoading={isLoadingConversations}
+            hasMore={hasMoreConversations}
+            isLoadingMore={isLoadingMoreConversations}
+            onLoadMore={loadMoreConversations}
             errorMessage={errorMessage}
             showPageName={selectedPageIds.length > 1}
           />
@@ -1137,6 +1192,9 @@ export const App: React.FC = () => {
             onCopyDraft={handleCopyDraft}
             copySuccess={copySuccess}
             isLoadingMessages={isLoadingMessages}
+            hasMoreMessages={hasMoreMessages}
+            isLoadingOlderMessages={isLoadingOlderMessages}
+            onLoadOlderMessages={loadOlderMessages}
             conflictDialog={conflictDialog}
             onResolveConflict={handleResolveConflict}
             onOpenAssistantMobile={() => setMobileView('assistant')}
@@ -1372,7 +1430,9 @@ function mapConversationSummary(
     id: item.id,
     pageId: item.pageId,
     pageName: item.pageName || pageNameById.get(item.pageId),
-    studentName: item.customerName || 'Khách hàng Pancake',
+    studentName: item.studentIdentity?.student?.name || item.customerName || 'Khách hàng Pancake',
+    studentId:item.studentIdentity?.student?.id,studentRevision:item.studentIdentity?.student?.revision,
+    customerName:item.customerName,
     lastMessage: item.lastMessage || 'Chưa có nội dung tin nhắn',
     lastActiveAt: formatTimestamp(item.updatedAt),
     intent: inferIntent(item.lastMessage),

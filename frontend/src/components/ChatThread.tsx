@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useLayoutEffect, useState } from 'react';
 import { Conversation, ConversationIntent } from '../types';
 
 export interface ChatThreadProps {
@@ -8,6 +8,7 @@ export interface ChatThreadProps {
   onCopyDraft: () => void;
   copySuccess?: boolean;
   isLoadingMessages?: boolean;
+  hasMoreMessages?:boolean;isLoadingOlderMessages?:boolean;onLoadOlderMessages?:()=>Promise<void>;
   conflictDialog?: { isOpen: boolean; pendingContent: string };
   onResolveConflict?: (action: 'replace' | 'append' | 'cancel') => void;
   onOpenAssistantMobile?: () => void;
@@ -38,12 +39,15 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
   onDraftChange,
   onCopyDraft,
   copySuccess,
-  isLoadingMessages,
+  isLoadingMessages,hasMoreMessages,isLoadingOlderMessages,onLoadOlderMessages,
   conflictDialog,
   onResolveConflict,
   onOpenAssistantMobile
 }) => {
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+  const areaRef=useRef<HTMLDivElement>(null);
+  const olderAnchor=useRef<{id:string;height:number;top:number}|null>(null);
+  const previousLast=useRef('');
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const handleCopyMsg = (id: string, text: string) => {
@@ -52,10 +56,15 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
     setTimeout(() => setCopiedMsgId(null), 2000);
   };
 
-  // Auto scroll to bottom when conversation or message list changes
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [conversation?.id, conversation?.messages.length]);
+  useLayoutEffect(()=>{
+    const anchor=olderAnchor.current;const area=areaRef.current;
+    if(anchor&&area&&anchor.id===conversation?.id) {
+      area.scrollTop=anchor.top+area.scrollHeight-anchor.height;olderAnchor.current=null;
+    } else if(previousLast.current!==`${conversation?.id}:${conversation?.messages[conversation.messages.length-1]?.id}`) {
+      messagesEndRef.current?.scrollIntoView({behavior:'instant'});
+    }
+    previousLast.current=`${conversation?.id}:${conversation?.messages[conversation.messages.length-1]?.id}`;
+  },[conversation?.id,conversation?.messages.length]);
 
   if (!conversation) {
     return (
@@ -117,12 +126,17 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
               ✨ Trợ lý AI
             </button>
           )}
-          <span className="badge-channel">Pancake Demo</span>
+          <span className="badge-channel">Pancake</span>
         </div>
       </header>
 
+        <div className="chat-history-controls"><span>{conversation.messages.length} tin đã tải</span>{hasMoreMessages && <button type="button" className="btn-secondary" disabled={isLoadingOlderMessages||isLoadingMessages} onClick={()=>{
+          const area=areaRef.current;if(area)olderAnchor.current={id:conversation.id,height:area.scrollHeight,top:area.scrollTop};
+          void onLoadOlderMessages?.().catch(()=>{olderAnchor.current=null;});
+        }}>{isLoadingOlderMessages?'Đang tải tin cũ…':'Tải tin nhắn cũ hơn'}</button>}</div>
+
       {/* Messages List */}
-      <div className="chat-messages-area">
+      <div className="chat-messages-area" ref={areaRef}>
         <div className="chat-timeline-divider">
           <span>Hội thoại trực tiếp qua Fanpage Lớp Nhạc Thầy Minh</span>
         </div>

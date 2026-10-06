@@ -109,6 +109,7 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
     setReviewSessionId(null); setReviewConfirmed(false); setGradingError('');
     setIsGradingLoading(false); reviewKeyRef.current = null;
     setIsPronounMenuOpen(false);
+    setIsAddingField(false);setAttributesOpen(false);setNewFieldName('');setNewFieldType('text');setNewFieldOptions('');setNewFieldUseInSug(false);setFormError('');
   }, [conversation?.id, studentIdentity?.student?.id]);
   const gradingScope = useRef('');
   gradingScope.current = `${conversation?.id || ''}:${studentIdentity?.student?.id || ''}`;
@@ -343,6 +344,10 @@ export const SuggestionPanel: React.FC<SuggestionPanelProps> = ({
               </div>
             )}
 
+            {conversation.generationFacts && <details className="generation-facts"><summary>Dữ kiện hồ sơ đã dùng ({conversation.generationFacts.length})</summary>
+              <p className="field-help-note">Ghi nhớ đã xác nhận còn hiệu lực được tham khảo cho lần soạn này. Dữ liệu riêng tư và hết hiệu lực được loại ra.</p>
+              {conversation.generationFacts.map(fact=><div key={fact.id}><p>{fact.content}</p>{fact.sourceMessageId&&onOpenEvidence&&<button type="button" className="learning-text-button" onClick={()=>onOpenEvidence(fact.sourceConversationId||conversation.id,fact.sourceMessageId)}>Xem tin nguồn ↗</button>}</div>)}
+            </details>}
             <div className="pane-action-bar">
               <div className="pane-action-heading"><strong>Gợi ý trả lời <HelpTip title="Gợi ý trả lời">AI đọc tin mới của học viên và hồ sơ đã xác nhận, sau đó soạn ba câu để bạn chọn hoặc sửa. Hãy kiểm tra rồi tự gửi qua Pancake.</HelpTip></strong><small>AI soạn 3 phương án để bạn duyệt.</small></div>
               <button
@@ -691,6 +696,8 @@ function CustomFieldEditor({
   onDelete: () => Promise<void> | void;
 }) {
   const [value, setValue] = useState(field.value);
+  const [useAI,setUseAI]=useState(field.useInSuggestions);
+  useEffect(()=>{setUseAI(field.useInSuggestions);},[field.useInSuggestions]);
   const [adding, setAdding] = useState(false);
   const [notice, setNotice] = useState('');
   useEffect(() => { setValue(field.value); }, [field.value]);
@@ -746,9 +753,9 @@ function CustomFieldEditor({
         <label className="checkbox-label">
           <input
             type="checkbox"
-            checked={field.useInSuggestions}
+            checked={useAI}
             disabled={disabled}
-            onChange={(event) => void onSave({ useInSuggestions: event.target.checked })}
+            onChange={event=>{const desired=event.target.checked;setUseAI(desired);setError('');void Promise.resolve(onSave({useInSuggestions:desired})).catch(error=>{setUseAI(field.useInSuggestions);setError(error instanceof Error?error.message:'Không lưu được quyền dùng cho AI.');});}}
           />
           <span>Dùng cho AI <HelpTip title="Dùng cho AI">Khi bật, giá trị bạn đã lưu được đưa vào ngữ cảnh gợi ý chat. AI không tự điền hoặc sửa thuộc tính này.</HelpTip></span>
         </label>

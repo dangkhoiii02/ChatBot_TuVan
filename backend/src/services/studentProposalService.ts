@@ -212,6 +212,16 @@ export function decideProposal(input:{pageId:string;studentId:string;proposalId:
         break;
       }
       case 'resolution': {
+        if(sourceMessageId&&sourceConversationId) {
+          const source=getCachedMessage(input.pageId,sourceConversationId,sourceMessageId);
+          if(source.sender!=='staff'||!String(row.source_text||'').trim()||!source.text.includes(String(row.source_text)))
+            throw new HttpError(400,'Xác nhận đã sửa cần nguyên văn từ giáo viên, không dùng lời học viên tự báo.','RESOLUTION_SOURCE_UNVERIFIED');
+        } else if(row.source_review_id) {
+          const review=db.prepare('SELECT teacher_input AS teacherInput,status FROM student_review_sessions WHERE id=? AND student_id=?')
+            .get(row.source_review_id,input.studentId) as {teacherInput:string;status:string}|undefined;
+          if(!review||review.status!=='confirmed'||!String(row.source_text||'').trim()||!review.teacherInput.includes(String(row.source_text)))
+            throw new HttpError(400,'Xác nhận đã sửa cần nhận xét giáo viên đã xác nhận gửi.','RESOLUTION_SOURCE_UNVERIFIED');
+        } else throw new HttpError(400,'Đề xuất đã sửa cần nguồn giáo viên để xác nhận.','RESOLUTION_SOURCE_UNVERIFIED');
         const issueTitle=text(payload.issueTitle);
         const issue=db.prepare('SELECT id,revision FROM student_issues WHERE student_id=? AND normalized_title=?').get(input.studentId,normalize(issueTitle)) as {id:string;revision:number}|undefined;
         if(!issue) throw new HttpError(409,'Không tìm thấy lỗi cần xác nhận đã sửa.','ISSUE_NOT_FOUND');

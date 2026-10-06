@@ -154,6 +154,7 @@ suggestionsRouter.post(
           .slice(0,20).map((fact)=>({
           id:String(fact.id),kind:String(fact.kind),content:String(fact.content),sourceText:typeof fact.sourceText==='string'?fact.sourceText:undefined,
           sourceMessageId:typeof fact.sourceMessageId==='string'?fact.sourceMessageId:undefined,
+          sourceConversationId:typeof fact.sourceConversationId==='string'?fact.sourceConversationId:undefined,
           occurredAt:typeof fact.occurredAt==='string'?fact.occurredAt:undefined,
           expiresAt:typeof fact.expiresAt==='string'?fact.expiresAt:undefined
         })),
@@ -186,7 +187,7 @@ suggestionsRouter.post(
       }
     } : undefined);
     const usedFacts = formatStudentContext(studentContext,input.mode==='teacher_review').facts.map((fact)=>({
-      id:fact.id,kind:fact.kind,content:fact.content,sourceMessageId:fact.sourceMessageId
+      id:fact.id,kind:fact.kind,content:fact.content,sourceMessageId:fact.sourceMessageId,sourceConversationId:fact.sourceConversationId
     }));
     res.json({ ...result, identityStatus:identity.status,
       contextVersion:studentContext?`${studentContext.studentId}:${studentContext.revision}`:null,

@@ -9,6 +9,7 @@ export interface ConversationSidebarProps {
   isLoading?: boolean;
   errorMessage?: string;
   showPageName?: boolean;
+  hasMore?:boolean;isLoadingMore?:boolean;onLoadMore?:()=>Promise<void>;
 }
 
 type FilterIntent = 'all' | ConversationIntent;
@@ -39,16 +40,18 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
   onRefresh,
   isLoading,
   errorMessage,
-  showPageName
+  showPageName,hasMore,isLoadingMore,onLoadMore
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterIntent, setFilterIntent] = useState<FilterIntent>('all');
 
+  const normalizeSearch=(value:string)=>value.toLocaleLowerCase('vi').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').trim();
   const filteredConversations = useMemo(() => {
     return conversations.filter((conv) => {
       const matchesSearch =
-        conv.studentName.toLowerCase().includes(searchTerm.toLowerCase().trim()) ||
-        conv.lastMessage.toLowerCase().includes(searchTerm.toLowerCase().trim());
+        normalizeSearch(conv.studentName).includes(normalizeSearch(searchTerm)) ||
+        normalizeSearch(conv.customerName || '').includes(normalizeSearch(searchTerm)) ||
+        normalizeSearch(conv.lastMessage).includes(normalizeSearch(searchTerm));
 
       const matchesIntent = filterIntent === 'all' || conv.intent === filterIntent;
 
@@ -204,6 +207,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
             );
           })
         )}
+        {hasMore && <div className="sidebar-load-more"><button type="button" className="btn-secondary" disabled={isLoadingMore||isLoading} onClick={()=>void onLoadMore?.()}>{isLoadingMore?'Đang tải…':'Tải thêm hội thoại'}</button><small>Tìm kiếm trong {conversations.length} hội thoại đã tải.</small></div>}
       </div>
     </aside>
   );
