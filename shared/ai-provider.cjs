@@ -45,7 +45,8 @@ function resolveAI(input = {}, env = process.env) {
   if (baseUrl && (provider === 'custom' || provider === 'openai')) {
     let url;
     try { url = new URL(baseUrl); } catch { throw new Error('Base URL không hợp lệ.'); }
-    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) throw new Error('Base URL phải là HTTPS, không chứa tài khoản, query hoặc fragment.');
+    const localHttp = url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1');
+    if ((url.protocol !== 'https:' && !localHttp) || url.username || url.password || url.search || url.hash) throw new Error('Base URL phải là HTTPS, không chứa tài khoản, query hoặc fragment.');
     if (provider === 'custom') {
       const allowed = (env.AI_ALLOWED_BASE_URLS || '').split(',').map(v => v.trim().replace(/\/+$/, '')).filter(Boolean);
       if (!allowed.includes(baseUrl.replace(/\/+$/, ''))) throw new Error('Base URL chưa được quản trị viên cho phép trong AI_ALLOWED_BASE_URLS.');
@@ -71,7 +72,7 @@ async function requestAI(settings, system, prompt) {
   } else {
     url = `${settings.baseUrl || endpoints[provider]}/chat/completions`;
     headers.Authorization = `Bearer ${apiKey}`;
-    body = { model, messages: [{ role: 'system', content: instruction }, { role: 'user', content: prompt }] };
+    body = { model, stream: false, messages: [{ role: 'system', content: instruction }, { role: 'user', content: prompt }] };
   }
   let response;
   const retryableStatuses = new Set([429, 500, 502, 503, 504]);

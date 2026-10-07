@@ -2,8 +2,9 @@ import type { TabId } from '../types';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'suggestions', label: 'Gợi ý' },
-  { id: 'student', label: 'Học viên' },
+  { id: 'student', label: 'Hồ sơ' },
   { id: 'grading', label: 'Chấm bài' },
+  { id: 'memories', label: 'Ghi nhớ' },
 ];
 
 interface Props {

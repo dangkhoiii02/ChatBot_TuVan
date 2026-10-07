@@ -13,7 +13,6 @@
   const HOST_ID = 'thay-minh-copilot-host';
   const DEFAULT_SIZE = { width: 360, height: 560 };
   const MIN_SIZE = { width: 280, height: 360 };
-  const MAX_SIZE = { width: 560, height: 900 };
   const MARGIN = 12;
   const BRIDGE_SOURCE =
     (globalThis.ThayMinhBridgeContract &&
@@ -38,7 +37,6 @@
   let dragBar = null;
   let toggleBtn = null;
   let shellIframe = null;
-  let resizeHandle = null;
   /** @type {HTMLElement|null} */
   let tokenBadgeEl = null;
 
@@ -75,8 +73,8 @@
 
   function clampSize(sz) {
     return {
-      width: Math.min(MAX_SIZE.width, Math.max(MIN_SIZE.width, Math.round(sz.width))),
-      height: Math.min(MAX_SIZE.height, Math.max(MIN_SIZE.height, Math.round(sz.height))),
+      width: Math.max(MIN_SIZE.width, Math.round(sz.width)),
+      height: Math.max(MIN_SIZE.height, Math.round(sz.height)),
     };
   }
 
@@ -95,8 +93,8 @@
     }, 120);
   }
 
-  function applyGeometry() {
-    position = clampPosition(position, size);
+  function applyGeometry(keepInside) {
+    if (keepInside !== false) position = clampPosition(position, size);
     size = clampSize(size);
     if (!panelEl) return;
     panelEl.style.left = position.left + 'px';
@@ -159,12 +157,19 @@
     if (resizeState) {
       const dx = e.clientX - resizeState.startX;
       const dy = e.clientY - resizeState.startY;
-      size = clampSize({
-        width: resizeState.originW + dx,
-        height: resizeState.originH + dy,
-      });
-      position = clampPosition(position, size);
-      applyGeometry();
+      const growLeft = resizeState.edge.includes('w');
+      const growTop = resizeState.edge.includes('n');
+      const nextWidth = resizeState.originW + (growLeft ? -dx : dx);
+      const nextHeight = resizeState.originH + (growTop ? -dy : dy);
+      const clamped = clampSize({ width: nextWidth, height: nextHeight });
+      const appliedW = clamped.width - resizeState.originW;
+      const appliedH = clamped.height - resizeState.originH;
+      size = clamped;
+      position = {
+        left: resizeState.originLeft + (growLeft ? -appliedW : 0),
+        top: resizeState.originTop + (growTop ? -appliedH : 0),
+      };
+      applyGeometry(false);
       e.preventDefault();
     }
   }
@@ -200,11 +205,15 @@
 
   function beginResize(e) {
     if (e.button != null && e.button !== 0) return;
+    const edge = e.currentTarget && e.currentTarget.dataset.edge;
     resizeState = {
+      edge: edge || 'se',
       startX: e.clientX,
       startY: e.clientY,
       originW: size.width,
       originH: size.height,
+      originLeft: position.left,
+      originTop: position.top,
     };
     if (panelEl) panelEl.classList.add('tm-dragging');
     if (shellIframe) shellIframe.style.pointerEvents = 'none';
@@ -347,18 +356,44 @@
       }
       .tm-resize {
         position: absolute;
+        z-index: 2;
+        touch-action: none;
+        background: transparent;
+      }
+      .tm-resize-n, .tm-resize-s {
+        left: 14px;
+        right: 14px;
+        height: 8px;
+        cursor: ns-resize;
+      }
+      .tm-resize-e, .tm-resize-w {
+        top: 14px;
+        bottom: 14px;
+        width: 8px;
+        cursor: ew-resize;
+      }
+      .tm-resize-n { top: 0; }
+      .tm-resize-s { bottom: 0; }
+      .tm-resize-e { right: 0; }
+      .tm-resize-w { left: 0; }
+      .tm-resize-nw, .tm-resize-ne, .tm-resize-sw, .tm-resize-se {
+        width: 14px;
+        height: 14px;
+      }
+      .tm-resize-nw { top: 0; left: 0; cursor: nwse-resize; }
+      .tm-resize-se { right: 0; bottom: 0; cursor: nwse-resize; }
+      .tm-resize-ne { top: 0; right: 0; cursor: nesw-resize; }
+      .tm-resize-sw { left: 0; bottom: 0; cursor: nesw-resize; }
+      .tm-resize-se::after {
+        content: '';
+        position: absolute;
         right: 2px;
         bottom: 2px;
-        width: 16px;
-        height: 16px;
-        cursor: nwse-resize;
-        touch-action: none;
-        background:
-          linear-gradient(135deg, transparent 50%, rgba(148,163,184,0.55) 50%) ;
-        border-radius: 2px;
-        opacity: 0.7;
+        width: 10px;
+        height: 10px;
+        background: linear-gradient(135deg, transparent 50%, rgba(148,163,184,0.7) 50%);
+        border-radius: 1px;
       }
-      .tm-resize:hover { opacity: 1; }
       .tm-toggle {
         position: fixed;
         width: 32px;
@@ -416,14 +451,17 @@
     shellIframe.title = 'Thầy Minh Copilot';
     shellIframe.allow = 'clipboard-read; clipboard-write';
 
-    resizeHandle = document.createElement('div');
-    resizeHandle.className = 'tm-resize';
-    resizeHandle.title = 'Kéo để đổi kích thước';
-    resizeHandle.addEventListener('pointerdown', beginResize);
+    for (const edge of ['n', 'e', 's', 'w', 'nw', 'ne', 'sw', 'se']) {
+      const handle = document.createElement('div');
+      handle.className = 'tm-resize tm-resize-' + edge;
+      handle.dataset.edge = edge;
+      handle.title = 'Kéo để đổi kích thước';
+      handle.addEventListener('pointerdown', beginResize);
+      panelEl.appendChild(handle);
+    }
 
     panelEl.appendChild(dragBar);
     panelEl.appendChild(shellIframe);
-    panelEl.appendChild(resizeHandle);
 
     toggleBtn = document.createElement('button');
     toggleBtn.className = 'tm-toggle';

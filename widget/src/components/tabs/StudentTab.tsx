@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { PronounPair, StudentProfile } from '../../types';
 import type { ApiChatMessage, StudentIdentityApi, StudentOptionApi, StudentSummaryApi } from '../../lib/api';
 import { PronounBar } from '../PronounBar';
-import { StudentLearningTab } from './StudentLearningTab';
+import { StudentLearningCard } from '../StudentLearningCard';
 
 interface Props {
   student: StudentProfile;
@@ -22,6 +22,7 @@ interface Props {
   onLink: (input: { studentId?: string; newStudentName?: string; importLegacyContext?: boolean }) => Promise<void>;
   onRefresh: () => Promise<unknown>;
   onSyncHistory: () => Promise<unknown>;
+  mode?: 'profile' | 'memories';
 }
 
 export function StudentTab({
@@ -42,6 +43,7 @@ export function StudentTab({
   onLink,
   onRefresh,
   onSyncHistory,
+  mode = 'profile',
 }: Props) {
   const [notesDraft, setNotesDraft] = useState(notes);
   const [saving, setSaving] = useState(false);
@@ -63,10 +65,25 @@ export function StudentTab({
 
   return (
     <div className="tab-panel student-tab">
-      <StudentLearningTab identity={identity} students={students} summary={summary} conversationId={conversationId} messages={messages}
+      <StudentLearningCard mode={mode} identity={identity} students={students} summary={summary} conversationId={conversationId}
+        messages={messages.map((message) => ({ ...message, sentAt: message.createdAt, sourceText: message.text }))}
         onLink={onLink} onRefresh={onRefresh} onSyncHistory={onSyncHistory} />
 
-      {identity?.status === 'linked' && <>
+      {mode === 'memories' && identity?.status === 'linked' && (
+        <div className="field-block">
+          <div className="field-label">Ghi nhớ hồ sơ cũ</div>
+          {memories.length === 0 ? <small>Chưa có ghi nhớ từ hồ sơ cũ.</small> : (
+            <ul className="memory-list">{memories.map((item) => <li key={item}>{item}</li>)}</ul>
+          )}
+          <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => {
+            const next = window.prompt('Thêm ghi nhớ');
+            if (next && next.trim()) void run(() => onAddMemory(next.trim()));
+          }}>Thêm ghi nhớ</button>
+          {error && <div className="inline-error" role="alert">{error}</div>}
+        </div>
+      )}
+
+      {mode === 'profile' && identity?.status === 'linked' && <>
       <div className="field-block">
         <div className="field-label">Đại từ xưng hô</div>
         <PronounBar value={pronouns} onChange={onPronounsChange} />
@@ -97,26 +114,6 @@ export function StudentTab({
           {saving ? 'Đang lưu…' : 'Lưu ghi chú'}
         </button>
       </label>
-
-      <div className="field-block">
-        <div className="field-label">Ghi nhớ</div>
-        <ul className="memory-list">
-          {memories.map((m) => (
-            <li key={m}>{m}</li>
-          ))}
-        </ul>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          disabled={saving}
-          onClick={() => {
-            const next = window.prompt('Thêm ghi nhớ');
-            if (next && next.trim()) void run(() => onAddMemory(next.trim()));
-          }}
-        >
-          Thêm ghi nhớ
-        </button>
-      </div>
 
       {customFields.length > 0 && (
         <div className="field-block">

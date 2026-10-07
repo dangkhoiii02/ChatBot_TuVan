@@ -620,6 +620,29 @@ export default function App() {
               onLink={handleLinkStudent}
               onRefresh={refreshStudentSummary}
               onSyncHistory={handleSyncHistory}
+              mode="profile"
+            />
+          )}
+          {tab === 'memories' && (
+            <StudentTab
+              mode="memories"
+              student={student}
+              pronouns={pronouns}
+              onPronounsChange={handlePronounsChange}
+              notes={studentContext?.profile.studyNotes || ''}
+              memories={studentContext?.memories.filter((memory) => memory.status === 'active').map((memory) => memory.content) || []}
+              customFields={studentContext?.profile.customFields.filter((field) => !field.hidden) || []}
+              onSaveNotes={handleSaveNotes}
+              onAddMemory={handleAddMemory}
+              onCustomFieldChange={handleCustomFieldChange}
+              identity={studentIdentity}
+              students={studentOptions}
+              summary={studentSummary}
+              conversationId={conversationId || ''}
+              messages={lastMessages}
+              onLink={handleLinkStudent}
+              onRefresh={refreshStudentSummary}
+              onSyncHistory={handleSyncHistory}
             />
           )}
           {tab === 'grading' && (

@@ -8,7 +8,7 @@ export type IntentCategory =
   | 'Khiếu nại'
   | 'Khác';
 
-export type TabId = 'suggestions' | 'student' | 'grading';
+export type TabId = 'suggestions' | 'student' | 'grading' | 'memories';
 
 /** speaker = người gửi xưng, listener = gọi người nhận */
 export type PronounPair = { speaker: string; listener: string };

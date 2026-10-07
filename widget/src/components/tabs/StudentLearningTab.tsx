@@ -7,13 +7,14 @@ import {
 } from '../../lib/api';
 
 interface Props {
+  mode?: 'profile' | 'memories';
   identity:StudentIdentityApi|null; students:StudentOptionApi[]; summary:StudentSummaryApi|null;
   conversationId:string; messages:ApiChatMessage[];
   onLink:(input:{studentId?:string;newStudentName?:string;importLegacyContext?:boolean})=>Promise<void>;
   onRefresh:()=>Promise<unknown>; onSyncHistory:()=>Promise<unknown>;
 }
 
-export function StudentLearningTab({identity,students,summary,conversationId,messages,onLink,onRefresh,onSyncHistory}:Props) {
+export function StudentLearningTab({mode='profile',identity,students,summary,conversationId,messages,onLink,onRefresh,onSyncHistory}:Props) {
   const [selectedStudent,setSelectedStudent]=useState('');const [newName,setNewName]=useState('');const [importLegacy,setImportLegacy]=useState(false);
   const [kind,setKind]=useState<StudentFactApi['kind']>('preference');const [fact,setFact]=useState('');const [expiry,setExpiry]=useState('');const [useFact,setUseFact]=useState(true);
   const [factSourceMessage,setFactSourceMessage]=useState('');
@@ -88,8 +89,8 @@ export function StudentLearningTab({identity,students,summary,conversationId,mes
           {summary.historyCoverage.oldestMessageAt&&<span> · từ {new Date(summary.historyCoverage.oldestMessageAt).toLocaleDateString('vi-VN')}</span>}
           {summary.historyCoverage.lastSyncedAt&&<span> · cập nhật {new Date(summary.historyCoverage.lastSyncedAt).toLocaleString('vi-VN')}</span>}
         </div>}
-        <div className="learning-actions"><button type="button" className="btn btn-outline" disabled={busy} onClick={()=>run(onSyncHistory)}>Đồng bộ thêm lịch sử</button>
-          <button type="button" className="btn btn-outline" disabled={busy} onClick={()=>run(async()=>{const result=await extractStudentProposals({studentId:studentId!,conversationId});setProposals(result.items);setStatus(`Đã tạo ${result.createdCount} đề xuất từ ${result.sourceMessageCount} tin chưa xử lý.${result.hasMore?' Còn tin để đọc tiếp.':''}`)})}>AI đề xuất từ tin chưa xử lý</button></div>
+        <div className="learning-actions">{mode==='profile'&&<button type="button" className="btn btn-outline" disabled={busy} onClick={()=>run(onSyncHistory)}>Đồng bộ thêm lịch sử</button>}
+          {mode==='memories'&&<button type="button" className="btn btn-outline" disabled={busy} onClick={()=>run(async()=>{const result=await extractStudentProposals({studentId:studentId!,conversationId});setProposals(result.items);setStatus(`Đã tạo ${result.createdCount} đề xuất từ ${result.sourceMessageCount} tin chưa xử lý.${result.hasMore?' Còn tin để đọc tiếp.':''}`)})}>AI đề xuất từ tin chưa xử lý</button>}</div>
         {summary?.historyCoverage.errors.map((item,index)=><small className="learning-warning" key={index}>{item}</small>)}
         {candidateMessages.length>0&&<details className="learning-message-identity"><summary>Gắn tin riêng cho từng học viên ({messageLinks.length} tin đã gắn)</summary>
           <small>Mặc định, các tin dùng hồ sơ của hội thoại. Dùng mục này khi một tài khoản/hội thoại có nhiều người học.</small>
@@ -102,7 +103,7 @@ export function StudentLearningTab({identity,students,summary,conversationId,mes
           })}
         </details>}
       </section>
-      <section className="learning-card"><h3>Ghi nhớ đã xác nhận</h3>
+      {mode==='memories'&&<section className="learning-card"><h3>Ghi nhớ đã xác nhận</h3>
         {summary?.facts.map((item)=><div className="learning-row" key={item.id}><span>{item.content}<small>{item.kind==='preference'?'Yêu cầu / xưng hô':item.kind==='event'?'Sự kiện':'Cách học'}{item.expiresAt?` · hết hạn ${new Date(item.expiresAt).toLocaleDateString('vi-VN')}`:''}</small>
           {item.sourceText&&<small>Nguồn: “{item.sourceText}”</small>}</span>
           <button type="button" className="btn btn-outline" disabled={busy} onClick={()=>run(async()=>{await updateStudentFact({studentId:studentId!,factId:item.id,status:'archived'});await refresh()})}>Lưu trữ</button></div>)}
@@ -118,8 +119,8 @@ export function StudentLearningTab({identity,students,summary,conversationId,mes
             await createStudentFact({studentId:studentId!,kind,content:fact.trim(),useInSuggestions:useFact,sourceText:source?.text,sourceMessageId:source?.id,
               sourceConversationId:source?.id?conversationId:undefined,expiresAt:expiry?new Date(`${expiry}T23:59:59+07:00`).toISOString():undefined});setFact('');setExpiry('');setFactSourceMessage('');await refresh()})}>Thêm ghi nhớ</button>
         </div>
-      </section>
-      <section className="learning-card"><h3>Bài đang tập</h3>
+      </section>}
+      {mode==='profile'&&<><section className="learning-card"><h3>Bài đang tập</h3>
         {summary?.assignments.filter((item)=>item.status!=='completed').map((item)=><div className="learning-assignment" key={item.id}><b>{item.title}</b><span>{item.durationLabel} · {item.reviewSessionCount} lượt trả bài đã xác nhận</span>
           {item.pendingSubmissionCount>0&&<em>{item.pendingSubmissionCount} bài nộp chờ nhận xét</em>}
           <button type="button" className="btn btn-outline" disabled={busy} onClick={()=>run(async()=>{const evidence=window.prompt(`Căn cứ xác nhận đã vượt bài “${item.title}”:`);if(!evidence?.trim())return;
@@ -164,13 +165,13 @@ export function StudentLearningTab({identity,students,summary,conversationId,mes
           <button type="button" disabled={busy||!issueTitle.trim()||!issueQuote.trim()} onClick={()=>run(async()=>{const message=candidateMessages.find((item)=>item.id===sourceMessage);await createIssueOccurrence({studentId:studentId!,title:issueTitle.trim(),conversationId,
             messageId:message?.id,occurredAt:message?.createdAt||new Date().toISOString(),sourceKind,speaker:message?.sender==='student'?'Học viên':'Giáo viên/nhân viên',verbatimText:issueQuote.trim(),practiceAction:practice.trim()||undefined});
             setIssueTitle('');setIssueQuote('');setSourceMessage('');setPractice('');await refresh()})}>Lưu mốc lỗi</button></div></details>
-      </section>
-      <section className="learning-card"><h3>Đề xuất chờ duyệt ({proposals.length})</h3>{status&&<small>{status}</small>}
+      </section></>}
+      {mode==='memories'&&<section className="learning-card"><h3>Đề xuất chờ duyệt ({proposals.length})</h3>{status&&<small>{status}</small>}
         {proposals.map((item)=><article className="learning-proposal" key={item.id}><b>{String(item.payload.title||item.payload.content||item.payload.summary||item.kind)}</b><small>{item.sourceText?`Nguồn: “${item.sourceText}”`:'Thiếu trích dẫn'} {item.confidence?`· ${Math.round(item.confidence*100)}%`:''}</small>
           <div><button type="button" className="btn btn-outline" disabled={busy} onClick={()=>run(async()=>{const result=await decideStudentProposal({studentId:studentId!,proposalId:item.id,action:'accept'});setProposals(result.items);await refresh()})}>Duyệt</button>
             <button type="button" className="btn btn-outline" disabled={busy} onClick={()=>run(async()=>{const result=await decideStudentProposal({studentId:studentId!,proposalId:item.id,action:'reject'});setProposals(result.items)})}>Từ chối</button></div></article>)}
         {proposals.length===0&&<small>AI chỉ đề xuất; dữ kiện chưa duyệt không được dùng làm hồ sơ.</small>}
-      </section>
+      </section>}
     </>}
     {error&&<div className="inline-error" role="alert">{error}</div>}{busy&&<div className="inline-status">Đang lưu…</div>}
   </div>;

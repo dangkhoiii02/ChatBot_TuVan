@@ -41,9 +41,27 @@ test('custom URLs require exact admin allowlist; credentials/query/http blocked'
   const input = { provider: 'custom', apiKey: 'key', model: 'anything', baseUrl: 'https://gateway.example/v1' };
   assert.throws(() => resolveAI(input, {}), /AI_ALLOWED_BASE_URLS/);
   assert.equal(resolveAI(input, { AI_ALLOWED_BASE_URLS: input.baseUrl }).baseUrl, input.baseUrl);
-  for (const baseUrl of ['http://127.0.0.1', 'https://user:pass@example.org', 'https://example.org/?key=secret']) {
+  assert.equal(
+    resolveAI({ ...input, baseUrl: 'http://127.0.0.1:20128/v1' }, { AI_ALLOWED_BASE_URLS: 'http://127.0.0.1:20128/v1' }).baseUrl,
+    'http://127.0.0.1:20128/v1'
+  );
+  for (const baseUrl of ['http://example.org/v1', 'https://user:pass@example.org', 'https://example.org/?key=secret']) {
     assert.throws(() => resolveAI({ ...input, baseUrl }, { AI_ALLOWED_BASE_URLS: baseUrl }));
   }
+});
+test('openai localhost http proxy is allowed; other http hosts stay blocked', () => {
+  const key = 'sk-local';
+  const model = 'ag/gemini-3.8-flash-high';
+  for (const baseUrl of ['http://localhost:20128/v1', 'http://127.0.0.1:20128/v1']) {
+    const settings = resolveAI({ provider: 'openai', apiKey: key, model, baseUrl }, {});
+    assert.equal(settings.provider, 'openai');
+    assert.equal(settings.baseUrl, baseUrl);
+    assert.equal(settings.model, model);
+  }
+  assert.throws(
+    () => resolveAI({ provider: 'openai', apiKey: key, model, baseUrl: 'http://example.org/v1' }, {}),
+    /HTTPS/
+  );
 });
 for (const provider of ['gemini', 'anthropic', 'openai', 'deepseek', 'groq', 'openrouter', 'mistral', 'xai', 'custom']) {
   test(`${provider} sends correct protocol and parses response`, async () => {
@@ -64,6 +82,7 @@ for (const provider of ['gemini', 'anthropic', 'openai', 'deepseek', 'groq', 'op
         return Response.json({ content: [{ type: 'text', text: JSON.stringify(result) }] });
       }
       assert.equal(options.headers.Authorization, 'Bearer secret');
+      assert.equal(body.stream, false);
       assert.ok(url.endsWith('/chat/completions'));
       return Response.json({ choices: [{ message: { content: '```json\n' + JSON.stringify(result) + '\n```' } }] });
     };
