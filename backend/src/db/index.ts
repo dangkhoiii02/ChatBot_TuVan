@@ -40,6 +40,9 @@ function initSchema(db: DatabaseSync) {
       created_at TEXT NOT NULL
     );
 
+    INSERT OR IGNORE INTO knowledge_versions (id, status, checksum, created_at)
+    VALUES ('v_default', 'published', 'system_init', datetime('now'));
+
     CREATE TABLE IF NOT EXISTS knowledge_items (
       version_id TEXT NOT NULL,
       item_id TEXT NOT NULL,

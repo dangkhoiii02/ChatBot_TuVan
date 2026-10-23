@@ -95,12 +95,13 @@ export function validateAISettings(settings: AISettings): string[] {
   if (!settings.model?.trim() && settings.provider !== 'mock') errors.push('Vui lòng nhập mã model.');
   if (settings.provider === 'custom') {
     if (!settings.baseUrl?.trim()) {
-      errors.push('Vui lòng nhập Base URL HTTPS.');
+      errors.push('Vui lòng nhập Base URL.');
     } else {
       try {
         const url = new URL(settings.baseUrl);
-        if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
-          errors.push('Base URL phải là HTTPS và không chứa tài khoản, query hoặc fragment.');
+        const isLocal = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+        if ((url.protocol !== 'https:' && !(isLocal && url.protocol === 'http:')) || url.username || url.password || url.search || url.hash) {
+          errors.push('Base URL phải là HTTPS (hoặc HTTP với localhost) và không chứa tài khoản, query hoặc fragment.');
         }
       } catch {
         errors.push('Base URL không hợp lệ.');

@@ -37,17 +37,17 @@ test('empty config is mock; explicit user config overrides server mock', () => {
   assert.equal(resolveAI({}, {}).provider, 'mock');
   assert.equal(resolveAI({ apiKey: 'sk-ant-test', model: 'claude-test' }, { AI_PROVIDER: 'mock' }).provider, 'anthropic');
 });
-test('custom URLs require exact admin allowlist; credentials/query/http blocked', () => {
+test('custom URLs require exact admin allowlist; credentials/query/remote-http blocked', () => {
   const input = { provider: 'custom', apiKey: 'key', model: 'anything', baseUrl: 'https://gateway.example/v1' };
   assert.throws(() => resolveAI(input, {}), /AI_ALLOWED_BASE_URLS/);
   assert.equal(resolveAI(input, { AI_ALLOWED_BASE_URLS: input.baseUrl }).baseUrl, input.baseUrl);
-  assert.equal(
-    resolveAI({ ...input, baseUrl: 'http://127.0.0.1:20128/v1' }, { AI_ALLOWED_BASE_URLS: 'http://127.0.0.1:20128/v1' }).baseUrl,
-    'http://127.0.0.1:20128/v1'
-  );
-  for (const baseUrl of ['http://example.org/v1', 'https://user:pass@example.org', 'https://example.org/?key=secret']) {
+  assert.equal(resolveAI(input, { AI_ALLOWED_BASE_URLS: '*' }).baseUrl, input.baseUrl);
+  for (const baseUrl of ['http://insecure.example.org', 'https://user:pass@example.org', 'https://example.org/?key=secret']) {
     assert.throws(() => resolveAI({ ...input, baseUrl }, { AI_ALLOWED_BASE_URLS: baseUrl }));
   }
+  // Localhost HTTP is permitted for local routers like 9router
+  assert.equal(resolveAI({ ...input, baseUrl: 'http://localhost:20128/v1' }, {}).baseUrl, 'http://localhost:20128/v1');
+  assert.equal(resolveAI({ ...input, baseUrl: 'http://127.0.0.1:20128/v1' }, {}).baseUrl, 'http://127.0.0.1:20128/v1');
 });
 test('openai localhost http proxy is allowed; other http hosts stay blocked', () => {
   const key = 'sk-local';

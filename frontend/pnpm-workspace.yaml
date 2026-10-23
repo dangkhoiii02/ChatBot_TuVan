@@ -1,8 +1,2 @@
-onlyBuiltDependencies:
-  - esbuild
-
-supportedArchitectures:
-  os:
-    - linux
-  cpu:
-    - x64
+allowBuilds:
+  esbuild: true

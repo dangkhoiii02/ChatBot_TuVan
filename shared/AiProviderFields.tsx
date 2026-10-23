@@ -16,7 +16,7 @@ export function AiProviderFields({ provider, baseUrl, onProvider, onBaseUrl, all
     </label>
     {provider === 'custom' && <label className="settings-field ai-field-row" style={{ display: 'grid', gap: 6 }}>
       <span>Base URL</span>
-      <input className="minimal-input ai-key-input" type="url" value={baseUrl} onChange={e => onBaseUrl(e.target.value)} placeholder="https://your-provider.example/v1" />
+      <input className="minimal-input ai-key-input" type="url" value={baseUrl} onChange={e => onBaseUrl(e.target.value)} placeholder="https://your-provider.example/v1 hoặc http://localhost:20128/v1" />
       <small>Endpoint phải được quản trị viên thêm vào AI_ALLOWED_BASE_URLS.</small>
     </label>}
     <small>Key có thể dùng nhiều model. Nhập đúng mã model được tài khoản cấp quyền; chọn nhà cung cấp nếu không thể tự nhận diện.</small>

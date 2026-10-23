@@ -80,6 +80,14 @@ export async function createSuggestions(input: CreateSuggestionsInput, options?:
       const auditInput={...input,...(options?.afterProviderSuccess?.()||{})};
       const kvRow = db.prepare('SELECT id FROM knowledge_versions ORDER BY created_at DESC LIMIT 1')
         .get() as { id: string } | undefined;
+      let knowledgeVersionId = kvRow?.id;
+      if (!knowledgeVersionId) {
+        db.prepare(`
+          INSERT OR IGNORE INTO knowledge_versions (id, status, checksum, created_at)
+          VALUES ('v_default', 'published', 'system_init', datetime('now'))
+        `).run();
+        knowledgeVersionId = 'v_default';
+      }
       const nowIso = new Date().toISOString();
       db.prepare(`INSERT INTO generations (
         id, conversation_id, input_text, context_json, knowledge_version_id, model, status, sensitivity, flag_reason, replies_json, latency_ms, created_at, updated_at
@@ -95,7 +103,7 @@ export async function createSuggestions(input: CreateSuggestionsInput, options?:
             historyCoverage: input.studentContext?.historyCoverage || { status: 'unknown' },
             assignmentId: input.assignmentId || null,reviewSessionId: auditInput.reviewSessionId || null,
             reviewSessionKey: auditInput.reviewSessionKey || null
-          }),kvRow?.id || 'v_default',result.provider || `${settings.provider} (${settings.model})`,'succeeded',
+          }),knowledgeVersionId,result.provider || `${settings.provider} (${settings.model})`,'succeeded',
           result.sensitivity,result.flagReason || null,JSON.stringify(result.suggestions),Date.now() - startTime,nowIso,nowIso);
     });
   } catch (error) {

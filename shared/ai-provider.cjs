@@ -19,7 +19,11 @@ function resolveAI(input = {}, env = process.env) {
       apiKey ||= env.GEMINI_API_KEY || ''; model ||= env.GEMINI_MODEL || '';
       provider = 'gemini';
     } else if (provider === 'anthropic') apiKey ||= env.ANTHROPIC_API_KEY || '';
-    else if (provider === 'openai') { apiKey ||= env.OPENAI_API_KEY || ''; model ||= env.OPENAI_MODEL || 'gpt-5.5'; }
+    else if (provider === 'openai' || (provider === 'auto' && !apiKey && (env.OPENAI_API_KEY || env.OPENAI_BASE_URL))) {
+      apiKey ||= env.OPENAI_API_KEY || '';
+      model ||= env.OPENAI_MODEL || 'gpt-5.5';
+      if (provider === 'auto') provider = 'openai';
+    }
   }
   if (provider === 'mock' || apiKey === 'demo') return { provider: 'mock', apiKey: '', model, baseUrl: '' };
   if (provider === 'auto') {
@@ -45,11 +49,15 @@ function resolveAI(input = {}, env = process.env) {
   if (baseUrl && (provider === 'custom' || provider === 'openai')) {
     let url;
     try { url = new URL(baseUrl); } catch { throw new Error('Base URL không hợp lệ.'); }
-    const localHttp = url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1');
-    if ((url.protocol !== 'https:' && !localHttp) || url.username || url.password || url.search || url.hash) throw new Error('Base URL phải là HTTPS, không chứa tài khoản, query hoặc fragment.');
-    if (provider === 'custom') {
+    const isLocal = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    if ((url.protocol !== 'https:' && !(isLocal && url.protocol === 'http:')) || url.username || url.password || url.search || url.hash) {
+      throw new Error('Base URL phải là HTTPS (hoặc HTTP với localhost), không chứa tài khoản, query hoặc fragment.');
+    }
+    if (provider === 'custom' && !isLocal) {
       const allowed = (env.AI_ALLOWED_BASE_URLS || '').split(',').map(v => v.trim().replace(/\/+$/, '')).filter(Boolean);
-      if (!allowed.includes(baseUrl.replace(/\/+$/, ''))) throw new Error('Base URL chưa được quản trị viên cho phép trong AI_ALLOWED_BASE_URLS.');
+      if (!allowed.includes('*') && !allowed.includes(baseUrl.replace(/\/+$/, ''))) {
+        throw new Error('Base URL chưa được quản trị viên cho phép trong AI_ALLOWED_BASE_URLS.');
+      }
     }
   }
   return { provider, apiKey, model, baseUrl: baseUrl.replace(/\/+$/, '') };
