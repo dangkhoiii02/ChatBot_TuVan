@@ -1,4 +1,5 @@
 import { clearAppSession, getSessionToken, setAppSession } from './session';
+import { getAIRequestOverride, readAISettings, type AISettings } from '../../../shared/ai-settings';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -195,9 +196,13 @@ export async function createSuggestions(input: {
     createdAt: string;
   }>;
 }) {
+  const aiOverride = getAIRequestOverride(readAISettings());
   return requestJson<SuggestionApiResult>('/api/suggestions', {
     method: 'POST',
-    body: JSON.stringify(input),
+    body: JSON.stringify({
+      ...input,
+      ...aiOverride
+    }),
   });
 }
 
@@ -212,6 +217,7 @@ export async function createTeacherReview(input: {
   assignmentTitle?:string;
   reviewSessionKey?:string;
 }) {
+  const aiOverride = getAIRequestOverride(readAISettings());
   return requestJson<SuggestionApiResult>('/api/suggestions', {
     method: 'POST',
     body: JSON.stringify({
@@ -223,6 +229,7 @@ export async function createTeacherReview(input: {
       assignmentId:input.assignmentId,
       assignmentTitle:input.assignmentTitle,
       reviewSessionKey:input.reviewSessionKey,
+      ...aiOverride,
       pronouns: {
         senderCall: input.pronouns.speaker,
         recipientCall: input.pronouns.listener,
@@ -230,6 +237,13 @@ export async function createTeacherReview(input: {
       },
       messages: input.messages
     })
+  });
+}
+
+export async function validateAIConnection(settings: AISettings) {
+  return requestJson<{ ok: boolean; provider: string; model: string }>('/api/ai/validate', {
+    method: 'POST',
+    body: JSON.stringify(settings)
   });
 }
 

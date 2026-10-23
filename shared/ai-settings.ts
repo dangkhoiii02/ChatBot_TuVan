@@ -55,7 +55,7 @@ export function readAISettings(): AISettings {
     provider,
     apiKey: storedKey || undefined,
     model: safeGet(localStorage, KEYS.model) || undefined,
-    baseUrl: provider === 'custom' ? safeGet(localStorage, KEYS.baseUrl) || undefined : undefined,
+    baseUrl: (provider === 'custom' || provider === 'openai') ? safeGet(localStorage, KEYS.baseUrl) || undefined : undefined,
     rememberKey
   };
 }
@@ -117,7 +117,7 @@ export function getAIRequestOverride(settings = readAISettings()) {
     provider: settings.provider,
     apiKey: settings.apiKey,
     model: settings.model,
-    baseUrl: settings.provider === 'custom' ? settings.baseUrl : undefined
+    baseUrl: (settings.provider === 'custom' || settings.provider === 'openai') ? settings.baseUrl : undefined
   };
 }
 

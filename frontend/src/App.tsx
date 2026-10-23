@@ -1337,8 +1337,8 @@ export const App: React.FC = () => {
                   </label>
 
                   <label className="settings-field">
-                    <span className="field-label">Mã model</span>
-                    <input className="minimal-input ai-key-input" value={aiModel} onChange={(e) => setAiModel(e.target.value)} placeholder="Nhập mã model chính xác" />
+                    <span className="field-label">Tên Model (Mã model)</span>
+                    <input className="minimal-input ai-key-input" value={aiModel} onChange={(e) => setAiModel(e.target.value)} placeholder="Ví dụ: ag/gemini-3.8-flash-high, gpt-4o, ..." />
                   </label>
 
                   <label className="checkbox-label ai-remember-key">

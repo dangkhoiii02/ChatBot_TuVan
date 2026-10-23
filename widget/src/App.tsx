@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Header } from './components/Header';
+import { AiSettingsModal } from './components/AiSettingsModal';
+import { migrateAISettings, readAISettings } from '../../shared/ai-settings';
 import { StudentCard } from './components/StudentCard';
 import { ContextStrip } from './components/ContextStrip';
 import { TabBar } from './components/TabBar';
@@ -94,21 +96,12 @@ export default function App() {
   const studentRevisionRef=useRef<number|undefined>(undefined);
   const suggestionRequestRef = useRef(0);
   const contextResolveRef = useRef(0);
+  const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
+  const [aiSettings, setAiSettings] = useState(() => readAISettings());
+
   useEffect(() => {
-    for (const key of [
-      'ai_settings_mode',
-      'ai_provider',
-      'ai_api_key',
-      'ai_model',
-      'ai_base_url',
-      'ai_remember_key',
-      'gemini_api_key',
-      'gemini_model',
-      'ttd_backend_api_base_url',
-    ]) {
-      try { localStorage.removeItem(key); } catch { /* storage may be unavailable */ }
-      try { sessionStorage.removeItem(key); } catch { /* storage may be unavailable */ }
-    }
+    migrateAISettings();
+    setAiSettings(readAISettings());
   }, []);
   useEffect(() => {
     hasSessionRef.current = hasSession;
@@ -547,7 +540,17 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <Header />
+      <Header
+        onOpenAiSettings={() => setIsAiSettingsOpen(true)}
+        aiOverrideActive={aiSettings.mode === 'user_override'}
+        aiProviderLabel={aiSettings.provider === 'custom' ? `Custom (${aiSettings.model || 'model'})` : aiSettings.provider}
+      />
+      {isAiSettingsOpen && (
+        <AiSettingsModal
+          onClose={() => setIsAiSettingsOpen(false)}
+          onSaved={() => setAiSettings(readAISettings())}
+        />
+      )}
       {!hasSession ? (
         <LoginPanel bridgeToken={bridgeToken} onLoggedIn={() => setHasSession(true)} />
       ) : (

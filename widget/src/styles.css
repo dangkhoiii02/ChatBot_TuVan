@@ -116,6 +116,34 @@ textarea {
   letter-spacing: 0.04em;
   padding: 4px 7px;
   border-radius: 999px;
+  transition: all 0.15s ease;
+}
+
+button.ai-badge {
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+button.ai-badge:hover {
+  background: #bfdbfe;
+}
+
+.ai-badge-override {
+  background: #dcfce7 !important;
+  color: #15803d !important;
+  border-color: #86efac !important;
+}
+
+button.ai-badge-override:hover {
+  background: #bbf7d0 !important;
+}
+
+.ai-settings-dialog {
+  z-index: 1000;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  background: #ffffff;
 }
 
 .app-body {
